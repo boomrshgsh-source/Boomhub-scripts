@@ -1,0 +1,218 @@
+-- Fluent UI
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "BOOM HUB",
+    SubTitle = "by Boom",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+-- Roblox Services
+local player = game.Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local character = player.Character or player.CharacterAdded:Wait()
+local root = character:WaitForChild("HumanoidRootPart")
+
+-- ตัวแปร
+local ESPEnabled = true
+local AutoSwapEnabled = false
+local AutoLockEnabled = true
+local targetAnimal = nil
+local currentBeam = nil
+local currentNameTag = nil
+local AutoSwapDelay = 1
+
+local rainbowColors = {
+    Color3.fromRGB(255,0,0),
+    Color3.fromRGB(255,127,0),
+    Color3.fromRGB(255,255,0),
+    Color3.fromRGB(0,255,0),
+    Color3.fromRGB(0,0,255),
+    Color3.fromRGB(75,0,130),
+    Color3.fromRGB(148,0,211)
+}
+
+-- ฟังก์ชันหลัก
+local function getAllAnimals()
+    local folder = workspace:WaitForChild("Animals"):WaitForChild("ClientModels")
+    return folder:GetChildren()
+end
+
+-- 🔹 ฟังก์ชันหาตัวที่ใกล้ที่สุด แต่ต้องห่าง > 7 studs
+local function getClosestAnimalSkipFirst(minDist)
+    local animals = getAllAnimals()
+    if #animals < 2 then return nil end
+
+    local closest
+    local shortestDistance = math.huge
+    local minDistance = minDist or 7 -- ✅ ระยะขั้นต่ำ 7 studs
+
+    for i = 2, #animals do
+        local animal = animals[i]
+        local hrp = animal:FindFirstChild("HumanoidRootPart") or animal.PrimaryPart
+        if hrp then
+            local dist = (root.Position - hrp.Position).Magnitude
+            if dist > minDistance and dist < shortestDistance then
+                shortestDistance = dist
+                closest = animal
+            end
+        end
+    end
+
+    return closest
+end
+
+local function clearCurrentTarget()
+    if currentBeam then
+        currentBeam:Destroy()
+        currentBeam = nil
+    end
+    if currentNameTag then
+        currentNameTag:Destroy()
+        currentNameTag = nil
+    end
+    targetAnimal = nil
+end
+
+local function createBeam(target)
+    local attachment0 = Instance.new("Attachment", root)
+    local attachment1 = Instance.new("Attachment", target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart)
+    local beam = Instance.new("Beam")
+    beam.Attachment0 = attachment0
+    beam.Attachment1 = attachment1
+    beam.Width0 = 0.15
+    beam.Width1 = 0.15
+    beam.FaceCamera = true
+    beam.Segments = 10
+    beam.TextureMode = Enum.TextureMode.Static
+    beam.Parent = workspace
+
+    local step = 0
+    local connection
+    connection = RunService.RenderStepped:Connect(function(delta)
+        step = step + (delta or 0.016)
+        if not beam.Parent then
+            connection:Disconnect()
+            return
+        end
+        local t = (step * 5) % #rainbowColors + 1
+        local index1 = math.floor(t) % #rainbowColors + 1
+        local index2 = (index1 % #rainbowColors) + 1
+        local alpha = t - math.floor(t)
+        local color = rainbowColors[index1]:Lerp(rainbowColors[index2], alpha)
+        beam.Color = ColorSequence.new(color)
+    end)
+
+    return beam
+end
+
+local function addNameTag(target)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "NameTag"
+    billboard.Adornee = target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart
+    billboard.Size = UDim2.new(0,120,0,40)
+    billboard.StudsOffset = Vector3.new(0,3,0)
+    billboard.AlwaysOnTop = true
+
+    local label = Instance.new("TextLabel", billboard)
+    label.Size = UDim2.new(1,0,1,0)
+    label.BackgroundTransparency = 1
+    label.TextScaled = true
+    label.Text = target.Name
+    label.Font = Enum.Font.SourceSansBold
+    label.TextStrokeTransparency = 0
+    label.TextStrokeColor3 = Color3.new(0,0,0)
+
+    local step = 0
+    RunService.RenderStepped:Connect(function(delta)
+        step = step + (delta or 0.016)
+        local t = (step * 5) % #rainbowColors + 1
+        local index1 = math.floor(t) % #rainbowColors + 1
+        local index2 = (index1 % #rainbowColors) + 1
+        local alpha = t - math.floor(t)
+        label.TextColor3 = rainbowColors[index1]:Lerp(rainbowColors[index2], alpha)
+    end)
+
+    billboard.Parent = target
+    return billboard
+end
+
+local function swapToTarget()
+    if targetAnimal then
+        local name = targetAnimal.Name
+        game:GetService("ReplicatedStorage"):WaitForChild("Remote")
+            :WaitForChild("Animals"):WaitForChild("PlayerSwapAnimal")
+            :FireServer(name)
+    end
+end
+
+-- Fluent UI
+local ESPToggle = Tabs.Main:AddToggle("ESP", {Title = "ESP สีรุ้ง", Default = true})
+ESPToggle:OnChanged(function(Value)
+    ESPEnabled = Value
+end)
+
+local AutoSwapToggle = Tabs.Main:AddToggle("AutoSwap", {Title = "Auto Swap", Default = false})
+AutoSwapToggle:OnChanged(function(Value)
+    AutoSwapEnabled = Value
+end)
+
+local SwapDelaySlider = Tabs.Main:AddSlider("AutoSwapDelay", {
+    Title = "Delay AutoSwap",
+    Description = "หน่วงเวลาในการสลับสัตว์",
+    Default = 1,
+    Min = 0.1,
+    Max = 5,
+    Rounding = 1,
+    Callback = function(Value)
+        AutoSwapDelay = Value
+    end
+})
+
+-- 🔁 Loop AutoLock + AutoSwap + ESP
+local lastSwapTime = 0
+RunService.RenderStepped:Connect(function(delta)
+    if AutoLockEnabled then
+        local closest = getClosestAnimalSkipFirst(7) -- ✅ ระยะขั้นต่ำ 7 studs
+        if closest ~= targetAnimal then
+            clearCurrentTarget()
+            if closest then
+                targetAnimal = closest
+                if ESPEnabled then
+                    currentBeam = createBeam(targetAnimal)
+                    currentNameTag = addNameTag(targetAnimal)
+                end
+                print("Auto-Lock เปลี่ยนเป้าหมายเป็น: "..targetAnimal.Name)
+            end
+        end
+    end
+
+    -- 🔄 AutoSwap
+    if AutoSwapEnabled and targetAnimal then
+        lastSwapTime = lastSwapTime + (delta or 0.016)
+        if lastSwapTime >= AutoSwapDelay then
+            swapToTarget()
+            lastSwapTime = 0
+        end
+    else
+        lastSwapTime = 0
+    end
+end)
+
+-- แจ้งเตือนเมื่อโหลดเสร็จ
+Fluent:Notify({
+    Title = "BOOM HUB",
+    Content = "ESP + AutoLock + AutoSwap พร้อมใช้งาน (ล็อกตัวใกล้ที่สุดแต่ห่างเกิน 7 studs)",
+    Duration = 6
+})
