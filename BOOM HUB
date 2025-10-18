@@ -3,7 +3,7 @@
 local discordLink = "https://discord.gg/w9qmXKV3d"
 local realKey = "BOOM-HUBV2"
 
--- ฟังก์ชันเปิดใช้งานหลัก
+-- 🌟 ฟังก์ชันเปิดใช้งานหลัก
 local function RunMainScript()
     -- โหลด UI Library
     local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
@@ -14,26 +14,15 @@ local function RunMainScript()
         Desc = "by Boom",
         Icon = 105059922903197,
         Theme = "Dark",
-        Config = {
-            Keybind = Enum.KeyCode.LeftControl,
-            Size = UDim2.new(0, 500, 0, 400)
-        },
-        CloseUIButton = {
-            Enabled = true,
-            Text = "BOOM"
-        }
+        Config = { Keybind = Enum.KeyCode.LeftControl, Size = UDim2.new(0, 500, 0, 400) },
+        CloseUIButton = { Enabled = true, Text = "BOOM" }
     })
 
-    -- ปิดฟังก์ชันตอนเริ่ม
     local ESPEnabled = false
     local AutoLockEnabled = false
     local AutoSwapEnabled = false
-    local targetAnimal = nil
-    local currentBeam = nil
-    local currentNameTag = nil
-    local AutoSwapDelay = 1
-    local AutoLockDistance = 7
-    local lastSwapTime = 0
+    local targetAnimal, currentBeam, currentNameTag = nil, nil, nil
+    local AutoSwapDelay, AutoLockDistance, lastSwapTime = 1, 7, 0
 
     local player = game.Players.LocalPlayer
     local RunService = game:GetService("RunService")
@@ -41,16 +30,11 @@ local function RunMainScript()
     local root = character:WaitForChild("HumanoidRootPart")
 
     local rainbowColors = {
-        Color3.fromRGB(255,0,0),
-        Color3.fromRGB(255,127,0),
-        Color3.fromRGB(255,255,0),
-        Color3.fromRGB(0,255,0),
-        Color3.fromRGB(0,0,255),
-        Color3.fromRGB(75,0,130),
+        Color3.fromRGB(255,0,0), Color3.fromRGB(255,127,0), Color3.fromRGB(255,255,0),
+        Color3.fromRGB(0,255,0), Color3.fromRGB(0,0,255), Color3.fromRGB(75,0,130),
         Color3.fromRGB(148,0,211)
     }
 
-    -- ESP สัตว์ที่ใกล้ที่สุด
     local function ESPNearestAnimal(target)
         if not target then return end
         local attachment0 = Instance.new("Attachment", root)
@@ -58,8 +42,7 @@ local function RunMainScript()
         local beam = Instance.new("Beam")
         beam.Attachment0 = attachment0
         beam.Attachment1 = attachment1
-        beam.Width0 = 0.15
-        beam.Width1 = 0.15
+        beam.Width0, beam.Width1 = 0.15, 0.15
         beam.FaceCamera = true
         beam.Segments = 10
         beam.Parent = workspace
@@ -115,22 +98,19 @@ local function RunMainScript()
 
     local function AutoSwapAnimal(target)
         if target then
-            local name = target.Name
-            game:GetService("ReplicatedStorage"):WaitForChild("Remote"):WaitForChild("Animals"):WaitForChild("PlayerSwapAnimal"):FireServer(name)
+            game:GetService("ReplicatedStorage"):WaitForChild("Remote")
+                :WaitForChild("Animals"):WaitForChild("PlayerSwapAnimal"):FireServer(target.Name)
         end
     end
 
-    -- UI Main Tab
     local Main = Window:Tab({Title = "Main", Icon = "star"})
     Main:Section({Title = "ฟังก์ชันหลัก"})
+    Main:Toggle({Title = "ESP สัตว์ที่ใกล้ที่สุด", Value = ESPEnabled, Callback = function(v) ESPEnabled = v end})
+    Main:Toggle({Title = "ออโต้ ล็อกสัตว์", Value = AutoLockEnabled, Callback = function(v) AutoLockEnabled = v end})
+    Main:Slider({Title = "ระยะ AutoLock", Min=1, Max=50, Value=AutoLockDistance, Callback=function(v) AutoLockDistance=v end})
+    Main:Toggle({Title="ออโต้สลับสัตว์", Value=AutoSwapEnabled, Callback=function(v) AutoSwapEnabled=v end})
+    Main:Slider({Title="ดีเลย์ AutoSwap", Min=0.1, Max=5, Value=AutoSwapDelay, Callback=function(v) AutoSwapDelay=v end})
 
-    Main:Toggle({Title = "ESP สัตว์ที่ใกล้ที่สุด", Desc = "แสดงเส้นและชื่อสัตว์", Value = ESPEnabled, Callback = function(v) ESPEnabled = v end})
-    Main:Toggle({Title = "ออโต้ ล็อกสัตว์", Desc = "ล็อกเป้าหมายใกล้สุด", Value = AutoLockEnabled, Callback = function(v) AutoLockEnabled = v end})
-    Main:Slider({Title = "ระยะ AutoLock", Min=1, Max=50, Rounding=1, Value=AutoLockDistance, Callback=function(v) AutoLockDistance=v end})
-    Main:Toggle({Title="ออโต้สลับสัตว์", Desc="สลับสัตว์อัตโนมัติ", Value=AutoSwapEnabled, Callback=function(v) AutoSwapEnabled=v end})
-    Main:Slider({Title="ดีเลย์ AutoSwap", Min=0.1, Max=5, Rounding=1, Value=AutoSwapDelay, Callback=function(v) AutoSwapDelay=v end})
-
-    -- Loop การทำงาน
     RunService.RenderStepped:Connect(function(delta)
         if AutoLockEnabled then
             local newTarget = AutoLockNearestAnimal()
@@ -154,18 +134,141 @@ local function RunMainScript()
         end
     end)
 
-    Window:Notify({Title="BOOM HUB", Desc="ระบบพร้อมใช้งาน! ปิดฟังก์ชันทั้งหมดตอนเริ่ม", Time=4})
+    Window:Notify({Title="BOOM HUB", Desc="ระบบพร้อมใช้งาน!", Time=4})
+
+    -- ✅ เมื่อรันเสร็จ โหลด Mobile Keyboard (รวมในนี้)
+    local Player = game.Players.LocalPlayer
+    local VirtualInput = game:GetService("VirtualInputManager")
+    local UIS = game:GetService("UserInputService")
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "MobileKeyboardUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+
+    local dragging = false
+    local dragButton = nil
+    local lockPosition = false
+
+    local function createButton(name, text, position, key)
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Size = UDim2.new(0, 70, 0, 70)
+        button.Position = position
+        button.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        button.BackgroundTransparency = 0.4
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.TextScaled = true
+        button.Font = Enum.Font.GothamBold
+        button.Text = text
+        button.BorderSizePixel = 0
+        button.ZIndex = 10
+        button.Parent = ScreenGui
+
+        button.MouseButton1Down:Connect(function()
+            VirtualInput:SendKeyEvent(true, Enum.KeyCode[key], false, game)
+        end)
+
+        button.MouseButton1Up:Connect(function()
+            VirtualInput:SendKeyEvent(false, Enum.KeyCode[key], false, game)
+        end)
+
+        button.InputBegan:Connect(function(input)
+            if lockPosition then return end
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragButton = button
+                button:SetAttribute("StartPos", input.Position)
+                button:SetAttribute("StartButtonPos", button.Position)
+            end
+        end)
+
+        UIS.InputChanged:Connect(function(input)
+            if dragging and dragButton == button and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+                local delta = input.Position - button:GetAttribute("StartPos")
+                button.Position = UDim2.new(
+                    button:GetAttribute("StartButtonPos").X.Scale,
+                    button:GetAttribute("StartButtonPos").X.Offset + delta.X,
+                    button:GetAttribute("StartButtonPos").Y.Scale,
+                    button:GetAttribute("StartButtonPos").Y.Offset + delta.Y
+                )
+            end
+        end)
+
+        UIS.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+                dragButton = nil
+            end
+        end)
+    end
+
+    createButton("LeftButton", "◀️", UDim2.new(0.08, 0, 0.78, 0), "A")
+    createButton("RightButton", "▶️", UDim2.new(0.80, 0, 0.78, 0), "D")
+    createButton("JumpButton", "SP", UDim2.new(0.88, 0, 0.70, 0), "Space")
+
+    local LockButton = Instance.new("TextButton")
+    LockButton.Size = UDim2.new(0, 70, 0, 50)
+    LockButton.Position = UDim2.new(0.02, 0, 0.4, 0)
+    LockButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    LockButton.BackgroundTransparency = 0.4
+    LockButton.TextColor3 = Color3.new(1, 1, 1)
+    LockButton.Text = "🔒 ล็อคปุ่ม"
+    LockButton.Font = Enum.Font.GothamBold
+    LockButton.TextScaled = true
+    LockButton.BorderSizePixel = 0
+    LockButton.ZIndex = 10
+    LockButton.Parent = ScreenGui
+
+    LockButton.MouseButton1Click:Connect(function()
+        lockPosition = not lockPosition
+        if lockPosition then
+            LockButton.Text = "🔓 ปลดล็อค"
+            LockButton.BackgroundColor3 = Color3.fromRGB(0,150,0)
+        else
+            LockButton.Text = "🔒 ล็อคปุ่ม"
+            LockButton.BackgroundColor3 = Color3.fromRGB(0,0,0)
+        end
+    end)
+
+    local lockDragging = false
+    local startPos, startButtonPos
+
+    LockButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            lockDragging = true
+            startPos = input.Position
+            startButtonPos = LockButton.Position
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if lockDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - startPos
+            LockButton.Position = UDim2.new(
+                startButtonPos.X.Scale,
+                startButtonPos.X.Offset + delta.X,
+                startButtonPos.Y.Scale,
+                startButtonPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            lockDragging = false
+        end
+    end)
 end
 
--- ======= UI Key =======
-local ScreenGui = Instance.new("ScreenGui")
+-- ======= UI ระบบคีย์ =======
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "KeyUI_BoomHub"
 
 local Frame = Instance.new("Frame", ScreenGui)
 Frame.Size = UDim2.new(0,360,0,220)
 Frame.Position = UDim2.new(0.5,-180,0.5,-110)
 Frame.BackgroundColor3 = Color3.fromRGB(10,10,10)
-Frame.BorderSizePixel = 0
 Frame.Active = true
 Frame.Draggable = true
 Instance.new("UICorner", Frame).CornerRadius = UDim.new(0,12)
@@ -177,18 +280,8 @@ Title.Size=UDim2.new(0.9,0,0,60)
 Title.Text="Key"
 Title.Font=Enum.Font.SourceSansBold
 Title.TextSize=50
-Title.TextColor3=Color3.fromRGB(255,255,255)
+Title.TextColor3=Color3.new(1,1,1)
 Title.BackgroundTransparency=1
-
-local Sub = Instance.new("TextLabel", Frame)
-Sub.AnchorPoint=Vector2.new(0.5,0)
-Sub.Position=UDim2.new(0.5,0,0,72)
-Sub.Size=UDim2.new(0.9,0,0,20)
-Sub.Text="คีย์อยู่ในดิส"
-Sub.Font=Enum.Font.SourceSans
-Sub.TextSize=16
-Sub.TextColor3=Color3.fromRGB(255,100,150)
-Sub.BackgroundTransparency=1
 
 local KeyBox = Instance.new("TextBox", Frame)
 KeyBox.AnchorPoint=Vector2.new(0.5,0)
@@ -197,7 +290,7 @@ KeyBox.Position=UDim2.new(0.5,0,0,105)
 KeyBox.PlaceholderText="กรอกคีย์ที่นี่..."
 KeyBox.Font=Enum.Font.SourceSansBold
 KeyBox.TextSize=18
-KeyBox.TextColor3=Color3.fromRGB(255,255,255)
+KeyBox.TextColor3=Color3.new(1,1,1)
 KeyBox.BackgroundColor3=Color3.fromRGB(25,25,25)
 KeyBox.BorderSizePixel=0
 Instance.new("UICorner", KeyBox).CornerRadius = UDim.new(0,8)
@@ -209,7 +302,7 @@ ConfirmButton.Text="กดยืนยันคีย์"
 ConfirmButton.Font=Enum.Font.SourceSansBold
 ConfirmButton.TextSize=16
 ConfirmButton.BackgroundColor3=Color3.fromRGB(255,200,50)
-ConfirmButton.TextColor3=Color3.fromRGB(0,0,0)
+ConfirmButton.TextColor3=Color3.new(0,0,0)
 Instance.new("UICorner", ConfirmButton).CornerRadius=UDim.new(0,8)
 
 local CopyButton = Instance.new("TextButton", Frame)
@@ -218,8 +311,8 @@ CopyButton.Position=UDim2.new(0.5,10,0,155)
 CopyButton.Text="คัดลอกลิ้งดิส"
 CopyButton.Font=Enum.Font.SourceSansBold
 CopyButton.TextSize=16
-CopyButton.BackgroundColor3=Color3.fromRGB(255,255,255)
-CopyButton.TextColor3=Color3.fromRGB(0,0,0)
+CopyButton.BackgroundColor3=Color3.new(1,1,1)
+CopyButton.TextColor3=Color3.new(0,0,0)
 Instance.new("UICorner", CopyButton).CornerRadius=UDim.new(0,8)
 
 local Status = Instance.new("TextLabel", Frame)
@@ -228,27 +321,14 @@ Status.Size=UDim2.new(0.9,0,0,22)
 Status.Position=UDim2.new(0.5,0,0,200)
 Status.BackgroundTransparency=1
 Status.Text=""
-Status.TextColor3=Color3.fromRGB(255,255,255)
+Status.TextColor3=Color3.new(1,1,1)
 Status.TextSize=16
 Status.Font=Enum.Font.SourceSansBold
-Status.TextXAlignment=Enum.TextXAlignment.Center
 
 local function flashText(text,color)
 	Status.Text=text
-	if color then Status.TextColor3=color end
+	Status.TextColor3=color or Color3.new(1,1,1)
 	task.delay(1.5,function() Status.Text="" end)
-end
-
-local function equals_ci(a,b)
-	return tostring(a):lower() == tostring(b):lower()
-end
-
--- ตรวจสอบคลิปบอร์ดก่อน
-local success, clip = pcall(getclipboard)
-if success and clip == realKey then
-    RunMainScript()
-else
-    ScreenGui.Parent = game.CoreGui
 end
 
 CopyButton.MouseButton1Click:Connect(function()
@@ -260,18 +340,11 @@ ConfirmButton.MouseButton1Click:Connect(function()
 	local keyInput = KeyBox.Text
 	if keyInput == "" then
 		flashText("⚠️ กรุณากรอกคีย์ก่อน!", Color3.fromRGB(255,120,120))
-	elseif equals_ci(keyInput, realKey) then
+	elseif keyInput:lower() == realKey:lower() then
 		flashText("✅ คีย์ถูกต้อง!", Color3.fromRGB(100,255,100))
-		
-		-- 🌟 หด UI แบบสมุด
-		for i=1,20 do
-			Frame.Size = Frame.Size - UDim2.new(0,0,0,10)
-			wait(0.02)
-		end
-
+		for i=1,20 do Frame.Size = Frame.Size - UDim2.new(0,0,0,10) wait(0.02) end
 		wait(0.2)
 		Frame:Destroy()
-		-- รันสคริปต์หลัก
 		RunMainScript()
 	else
 		flashText("❌ คีย์ไม่ถูกต้อง!", Color3.fromRGB(255,80,80))
