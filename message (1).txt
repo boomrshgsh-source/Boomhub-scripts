@@ -184,3 +184,248 @@ Tab:Slider({
         print("[SilentAim] FOV set to:", FOV)
     end
 })
+
+---------------------------------------------------------
+-- SERVICES
+---------------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+---------------------------------------------------------
+-- REMOTE
+---------------------------------------------------------
+local Remote
+pcall(function()
+    Remote = ReplicatedStorage:WaitForChild("Remotes", 5):WaitForChild("Send", 5)
+end)
+
+---------------------------------------------------------
+-- SETTINGS
+---------------------------------------------------------
+local SilentAimEnabled = false
+local SilentAimAttachEnabled = false
+local AimPart = "Head"
+local FOVRadius = 150
+local CurrentTarget = nil
+
+-- DRAWING SETTINGS
+local lineColor = Color3.fromRGB(255, 255, 0)
+local starColor = Color3.fromRGB(255, 0, 0)
+local lineThickness = 2
+local starSize = 10
+
+-- DRAWING OBJECTS
+local targetLine = Drawing.new("Line")
+targetLine.Color = lineColor
+targetLine.Thickness = lineThickness
+targetLine.Visible = false
+
+local targetStars = {}
+for i=1,5 do
+    local starLine = Drawing.new("Line")
+    starLine.Color = starColor
+    starLine.Thickness = 1
+    starLine.Visible = false
+    table.insert(targetStars, starLine)
+end
+
+---------------------------------------------------------
+-- PREDICTION FUNCTION
+---------------------------------------------------------
+local function predictPosition(part, hrp)
+    local ping = 0.15
+    return part.Position + (hrp.Velocity * ping)
+end
+
+---------------------------------------------------------
+-- FIND CLOSEST TARGET WITHIN FOV
+---------------------------------------------------------
+local function getClosestTarget()
+    local closest
+    local shortest = FOVRadius
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local part = plr.Character:FindFirstChild(AimPart)
+            local hum = plr.Character:FindFirstChild("Humanoid")
+            if part and hum and hum.Health > 0 then
+                local pos, onscreen = Camera:WorldToViewportPoint(part.Position)
+                if onscreen then
+                    local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if dist <= FOVRadius and dist < shortest then
+                        shortest = dist
+                        closest = plr
+                    end
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+---------------------------------------------------------
+-- DRAW STAR 5 แฉก
+---------------------------------------------------------
+local function drawStar(pos)
+    local angleStep = math.rad(144)
+    local points = {}
+    for i=0,4 do
+        local angle = angleStep * i
+        local x = pos.X + math.cos(angle) * starSize
+        local y = pos.Y + math.sin(angle) * starSize
+        table.insert(points, Vector2.new(x, y))
+    end
+
+    for i=1,5 do
+        targetStars[i].From = points[i]
+        targetStars[i].To = points[(i % 5) + 1]
+        targetStars[i].Visible = true
+    end
+end
+
+---------------------------------------------------------
+-- HOOK FIRE SERVER FOR SILENT AIM
+---------------------------------------------------------
+local oldFire
+if Remote and Remote.FireServer then
+    pcall(function()
+        oldFire = hookfunction(Remote.FireServer, function(self, ...)
+            local args = {...}
+
+            if (SilentAimEnabled or SilentAimAttachEnabled)
+                and args[2] == "shoot_gun"
+                and CurrentTarget then
+
+                local part = CurrentTarget.Character:FindFirstChild(AimPart)
+                local hrp = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
+                local hum = CurrentTarget.Character:FindFirstChild("Humanoid")
+                local myHead = LocalPlayer.Character:FindFirstChild("Head")
+
+                if part and hrp and hum and hum.Health > 0 and myHead then
+                    local aimPos = predictPosition(part, hrp)
+
+                    args[4] = CFrame.new(myHead.Position, aimPos)
+                    args[5] = {
+                        { {
+                            ["Instance"] = part,
+                            ["Normal"] = Vector3.new(0,1,0),
+                            ["Position"] = aimPos
+                        } }
+                    }
+                end
+            end
+
+            return oldFire(self, unpack(args))
+        end)
+    end)
+end
+
+---------------------------------------------------------
+-- MAIN LOOP
+---------------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    if SilentAimEnabled or SilentAimAttachEnabled then
+        CurrentTarget = getClosestTarget()
+    end
+
+    if CurrentTarget and CurrentTarget.Character then
+        local part = CurrentTarget.Character:FindFirstChild(AimPart)
+        local hrp = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
+        local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+
+        if part and hrp and myHead then
+            local aimPos = predictPosition(part, hrp)
+            local screenPos = Camera:WorldToViewportPoint(aimPos)
+            local headPos = Camera:WorldToViewportPoint(myHead.Position)
+
+            -- Draw line
+            targetLine.From = Vector2.new(headPos.X, headPos.Y)
+            targetLine.To = Vector2.new(screenPos.X, screenPos.Y)
+            targetLine.Visible = true
+
+            -- Draw star
+            drawStar(Vector2.new(screenPos.X, screenPos.Y))
+        end
+    else
+        targetLine.Visible = false
+        for _, star in ipairs(targetStars) do
+            star.Visible = false
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- EXTERNAL FUNCTIONS (สำหรับ UI)
+---------------------------------------------------------
+getgenv().EnableSilent = function()
+    SilentAimEnabled = true
+    SilentAimAttachEnabled = false
+end
+
+getgenv().EnableAttach = function()
+    SilentAimEnabled = false
+    SilentAimAttachEnabled = true
+end
+
+getgenv().DisableSilent = function()
+    SilentAimEnabled = false
+    SilentAimAttachEnabled = false
+    CurrentTarget = nil
+end
+
+getgenv().AimHead = function()
+    AimPart = "Head"
+end
+
+getgenv().AimBody = function()
+    AimPart = "HumanoidRootPart"
+end
+
+
+Tab:Toggle({
+    Title = "Silent Aim",
+    Desc = "ยิงล็อกเป้าแบบไม่ติดตาม",
+    Default = false,
+    Callback = function(state)
+        if state then EnableSilent() else DisableSilent() end
+    end
+})
+
+Tab:Toggle({
+    Title = "Attach Anti-Lock",
+    Desc = "ล็อกเป้าติดตามอย่างหนึบ",
+    Default = false,
+    Callback = function(state)
+        if state then EnableAttach() else DisableSilent() end
+    end
+})
+
+Tab:Dropdown({
+    Title = "Aim Part",
+    Desc = "เลือกจุดเล็ง",
+    Values = {"Head", "HumanoidRootPart"},
+    Default = "Head",
+    Callback = function(value)
+        if value == "Head" then
+            AimHead()
+        else
+            AimBody()
+        end
+    end
+})
+
+Tab:Slider({
+    Title = "FOV Radius",
+    Desc = "ปรับขนาดวง FOV",
+    Min = 50,
+    Max = 300,
+    Default = FOVRadius,
+    Callback = function(value)
+        FOVRadius = value
+    end
+})
