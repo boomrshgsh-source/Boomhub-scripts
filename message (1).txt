@@ -184,81 +184,194 @@ Tab:Slider({
         print("[SilentAim] FOV set to:", FOV)
     end
 })
-
----------------------------------------------------------
+    -- ==========================================
 -- SERVICES
----------------------------------------------------------
+-- ==========================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local Camera = Workspace.CurrentCamera
 
----------------------------------------------------------
--- REMOTE
----------------------------------------------------------
-local Remote
-pcall(function()
-    Remote = ReplicatedStorage:WaitForChild("Remotes", 5):WaitForChild("Send", 5)
-end)
-
----------------------------------------------------------
--- SETTINGS
----------------------------------------------------------
-local SilentAimEnabled = false
+-- ==========================================
+-- CONFIG
+-- ==========================================
 local SilentAimAttachEnabled = false
-local AimPart = "Head"
-local FOVRadius = 150
+local WallbangEnabled = false
+local FOVRadius = 140
+local PredictionMultiplier = 5
+local TargetPartName = "Head"
 local CurrentTarget = nil
 
--- DRAWING SETTINGS
-local lineColor = Color3.fromRGB(255, 255, 0)
-local starColor = Color3.fromRGB(255, 0, 0)
-local lineThickness = 2
-local starSize = 10
+-- ==========================================
+-- HEART UI (TARGET LOCK INDICATOR)
+-- ==========================================
+local Heart = Drawing.new("Text")
+Heart.Text = "♥"
+Heart.Size = 42
+Heart.Center = true
+Heart.Outline = true
+Heart.Color = Color3.fromRGB(255, 40, 40)
+Heart.Visible = false
 
--- DRAWING OBJECTS
-local targetLine = Drawing.new("Line")
-targetLine.Color = lineColor
-targetLine.Thickness = lineThickness
-targetLine.Visible = false
+-- ==========================================
+-- ROTATING MARKS (4 LINES AROUND HEART)
+-- ==========================================
+local marks = {}
+local spinRadius = 55
+local spinSpeed = 2.5
 
-local targetStars = {}
-for i=1,5 do
-    local starLine = Drawing.new("Line")
-    starLine.Color = starColor
-    starLine.Thickness = 1
-    starLine.Visible = false
-    table.insert(targetStars, starLine)
+for i = 1, 4 do
+    local line = Drawing.new("Line")
+    line.Thickness = 4
+    line.Color = Color3.fromRGB(0,0,0)
+    line.Visible = false
+    marks[i] = line
 end
 
----------------------------------------------------------
--- PREDICTION FUNCTION
----------------------------------------------------------
+-- SPIN AROUND TARGET HEAD
+task.spawn(function()
+    local angle = 0
+    while true do
+        angle = angle + spinSpeed
+
+        if SilentAimAttachEnabled and CurrentTarget and CurrentTarget.Character then
+            local head = CurrentTarget.Character:FindFirstChild("Head")
+            if head then
+                local v3, onScreen = Camera:WorldToViewportPoint(head.Position)
+
+                if onScreen then
+                    local hx, hy = v3.X, v3.Y
+
+                    -- Heart follow head
+                    Heart.Position = Vector2.new(hx, hy)
+                    Heart.Visible = true
+
+                    -- 4 rotating marks
+                    for i, v in ipairs(marks) do
+                        local theta = math.rad(angle + (i-1)*90)
+                        local x = hx + math.cos(theta) * spinRadius
+                        local y = hy + math.sin(theta) * spinRadius
+                        v.From = Vector2.new(x, y)
+                        v.To   = Vector2.new(hx + math.cos(theta)*15, hy + math.sin(theta)*15)
+                        v.Visible = true
+                    end
+                else
+                    Heart.Visible = false
+                    for _,v in ipairs(marks) do v.Visible = false end
+                end
+            end
+        else
+            Heart.Visible = false
+            for _,v in ipairs(marks) do v.Visible = false end
+        end
+
+        task.wait()
+    end
+end)
+
+-- ==========================================
+-- LOCK LINE FROM OUR HEAD → TARGET HEAD
+-- ==========================================
+local LockLine = Drawing.new("Line")
+LockLine.Thickness = 2.5
+LockLine.Color = Color3.fromRGB(255, 60, 60)
+LockLine.Visible = false
+
+-- ==========================================
+-- FOV CIRCLE
+-- ==========================================
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = false
+FOVCircle.Thickness = 2
+FOVCircle.Filled = false
+FOVCircle.NumSides = 120
+FOVCircle.Transparency = 1
+FOVCircle.Radius = FOVRadius
+
+task.spawn(function()
+    local hue = 0
+    while true do
+        hue = (hue + 1) % 255
+        FOVCircle.Color = Color3.fromRGB(255, hue/2, hue/4)
+        task.wait(0.02)
+    end
+end)
+
+-- ==========================================
+-- UI UPDATER
+-- ==========================================
+RunService.RenderStepped:Connect(function()
+    local cx, cy = Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2
+
+    -- FOV always center
+    FOVCircle.Position = Vector2.new(cx, cy)
+    FOVCircle.Radius = FOVRadius
+
+    -- Update lock line
+    if SilentAimAttachEnabled and CurrentTarget and CurrentTarget.Character then
+        local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+        local targetHead = CurrentTarget.Character:FindFirstChild("Head")
+
+        if myHead and targetHead then
+            local a, on1 = Camera:WorldToViewportPoint(myHead.Position)
+            local b, on2 = Camera:WorldToViewportPoint(targetHead.Position)
+
+            if on1 and on2 then
+                LockLine.Visible = true
+                LockLine.From = Vector2.new(a.X, a.Y)
+                LockLine.To   = Vector2.new(b.X, b.Y)
+            else
+                LockLine.Visible = false
+            end
+        else
+            LockLine.Visible = false
+        end
+    else
+        LockLine.Visible = false
+    end
+end)
+
+-- ==========================================
+-- PING (STATIC)
+-- ==========================================
+local function getPing()
+    return 0.18
+end
+
+-- ==========================================
+-- PREDICTION
+-- ==========================================
 local function predictPosition(part, hrp)
-    local ping = 0.15
-    return part.Position + (hrp.Velocity * ping)
+    return part.Position + hrp.Velocity * getPing() * PredictionMultiplier
 end
 
----------------------------------------------------------
--- FIND CLOSEST TARGET WITHIN FOV
----------------------------------------------------------
+-- ==========================================
+-- GET TARGET PART
+-- ==========================================
+local function getAimPart(char)
+    return char:FindFirstChild(TargetPartName)
+end
+
+-- ==========================================
+-- FIND CLOSEST TARGET INSIDE FOV
+-- ==========================================
 local function getClosestTarget()
-    local closest
+    local closest = nil
     local shortest = FOVRadius
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
-            local part = plr.Character:FindFirstChild(AimPart)
+            local part = getAimPart(plr.Character)
             local hum = plr.Character:FindFirstChild("Humanoid")
             if part and hum and hum.Health > 0 then
-                local pos, onscreen = Camera:WorldToViewportPoint(part.Position)
-                if onscreen then
-                    local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                local v3, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local dist = (Vector2.new(v3.X,v3.Y) - center).Magnitude
                     if dist <= FOVRadius and dist < shortest then
-                        shortest = dist
                         closest = plr
+                        shortest = dist
                     end
                 end
             end
@@ -268,164 +381,128 @@ local function getClosestTarget()
     return closest
 end
 
----------------------------------------------------------
--- DRAW STAR 5 แฉก
----------------------------------------------------------
-local function drawStar(pos)
-    local angleStep = math.rad(144)
-    local points = {}
-    for i=0,4 do
-        local angle = angleStep * i
-        local x = pos.X + math.cos(angle) * starSize
-        local y = pos.Y + math.sin(angle) * starSize
-        table.insert(points, Vector2.new(x, y))
-    end
-
-    for i=1,5 do
-        targetStars[i].From = points[i]
-        targetStars[i].To = points[(i % 5) + 1]
-        targetStars[i].Visible = true
-    end
-end
-
----------------------------------------------------------
--- HOOK FIRE SERVER FOR SILENT AIM
----------------------------------------------------------
-local oldFire
-if Remote and Remote.FireServer then
-    pcall(function()
-        oldFire = hookfunction(Remote.FireServer, function(self, ...)
-            local args = {...}
-
-            if (SilentAimEnabled or SilentAimAttachEnabled)
-                and args[2] == "shoot_gun"
-                and CurrentTarget then
-
-                local part = CurrentTarget.Character:FindFirstChild(AimPart)
-                local hrp = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
-                local hum = CurrentTarget.Character:FindFirstChild("Humanoid")
-                local myHead = LocalPlayer.Character:FindFirstChild("Head")
-
-                if part and hrp and hum and hum.Health > 0 and myHead then
-                    local aimPos = predictPosition(part, hrp)
-
-                    args[4] = CFrame.new(myHead.Position, aimPos)
-                    args[5] = {
-                        { {
-                            ["Instance"] = part,
-                            ["Normal"] = Vector3.new(0,1,0),
-                            ["Position"] = aimPos
-                        } }
-                    }
-                end
-            end
-
-            return oldFire(self, unpack(args))
-        end)
-    end)
-end
-
----------------------------------------------------------
--- MAIN LOOP
----------------------------------------------------------
+-- UPDATE TARGET FREQUENCY
 RunService.RenderStepped:Connect(function()
-    if SilentAimEnabled or SilentAimAttachEnabled then
+    if SilentAimAttachEnabled then
         CurrentTarget = getClosestTarget()
-    end
-
-    if CurrentTarget and CurrentTarget.Character then
-        local part = CurrentTarget.Character:FindFirstChild(AimPart)
-        local hrp = CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
-        local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
-
-        if part and hrp and myHead then
-            local aimPos = predictPosition(part, hrp)
-            local screenPos = Camera:WorldToViewportPoint(aimPos)
-            local headPos = Camera:WorldToViewportPoint(myHead.Position)
-
-            -- Draw line
-            targetLine.From = Vector2.new(headPos.X, headPos.Y)
-            targetLine.To = Vector2.new(screenPos.X, screenPos.Y)
-            targetLine.Visible = true
-
-            -- Draw star
-            drawStar(Vector2.new(screenPos.X, screenPos.Y))
-        end
-    else
-        targetLine.Visible = false
-        for _, star in ipairs(targetStars) do
-            star.Visible = false
-        end
     end
 end)
 
----------------------------------------------------------
--- EXTERNAL FUNCTIONS (สำหรับ UI)
----------------------------------------------------------
-getgenv().EnableSilent = function()
-    SilentAimEnabled = true
-    SilentAimAttachEnabled = false
+-- ==========================================
+-- WALL CHECK
+-- ==========================================
+local function isBehindWall(startPos, endPos)
+    local ray = Ray.new(startPos, endPos - startPos)
+    local ignore = {LocalPlayer.Character}
+
+    if CurrentTarget and CurrentTarget.Character then
+        table.insert(ignore, CurrentTarget.Character)
+    end
+
+    return Workspace:FindPartOnRayWithIgnoreList(ray, ignore)
 end
 
-getgenv().EnableAttach = function()
-    SilentAimEnabled = false
-    SilentAimAttachEnabled = true
+-- ==========================================
+-- HOOK REMOTE (SEND)
+-- ==========================================
+local Remote
+pcall(function()
+    Remote = game.ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Send")
+end)
+
+if Remote then
+    local old
+    old = hookfunction(Remote.FireServer, function(self, ...)
+        if self ~= Remote then
+            return old(self, ...)
+        end
+
+        local args = {...}
+
+        if (SilentAimAttachEnabled or WallbangEnabled)
+        and args[2] == "shoot_gun"
+        and CurrentTarget then
+
+            local char = CurrentTarget.Character
+            local part = getAimPart(char)
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+
+            if part and hrp then
+                local myHead = LocalPlayer.Character.Head
+                local aimPos = predictPosition(part, hrp)
+                local blocked = isBehindWall(myHead.Position, aimPos)
+
+                if WallbangEnabled and blocked then
+                    args[4] = CFrame.new(9e9,9e9,9e9)
+                else
+                    args[4] = CFrame.new(myHead.Position, aimPos)
+                end
+
+                args[5] = {
+                    [1] = {
+                        [1] = {
+                            ["Instance"] = part,
+                            ["Normal"] = Vector3.new(0, 1, 0),
+                            ["Position"] = aimPos
+                        }
+                    }
+                }
+            end
+        end
+
+        return old(self, unpack(args))
+    end)
 end
 
-getgenv().DisableSilent = function()
-    SilentAimEnabled = false
-    SilentAimAttachEnabled = false
-    CurrentTarget = nil
-end
-
-getgenv().AimHead = function()
-    AimPart = "Head"
-end
-
-getgenv().AimBody = function()
-    AimPart = "HumanoidRootPart"
-end
-
+-- ==========================================
+-- WINDUI – MAIN TAB
+-- ==========================================
 
 Tab:Toggle({
-    Title = "Silent Aim",
-    Desc = "ยิงล็อกเป้าแบบไม่ติดตาม",
+    Title = "Silent Aim Attach",
+    Desc = "ล็อกเป้าอัตโนมัติ",
     Default = false,
     Callback = function(state)
-        if state then EnableSilent() else DisableSilent() end
+        SilentAimAttachEnabled = state
+        Heart.Visible = state
+        FOVCircle.Visible = state
+        for _,v in ipairs(marks) do v.Visible = state end
+        if state then WallbangEnabled = false end
     end
 })
 
 Tab:Toggle({
-    Title = "Attach Anti-Lock",
-    Desc = "ล็อกเป้าติดตามอย่างหนึบ",
+    Title = "Wallbang",
+    Desc = "ยิงทะลุกำแพง",
     Default = false,
     Callback = function(state)
-        if state then EnableAttach() else DisableSilent() end
-    end
-})
-
-Tab:Dropdown({
-    Title = "Aim Part",
-    Desc = "เลือกจุดเล็ง",
-    Values = {"Head", "HumanoidRootPart"},
-    Default = "Head",
-    Callback = function(value)
-        if value == "Head" then
-            AimHead()
-        else
-            AimBody()
+        WallbangEnabled = state
+        if state then
+            SilentAimAttachEnabled = false
+            Heart.Visible = false
+            FOVCircle.Visible = false
+            for _,v in ipairs(marks) do v.Visible = false end
         end
     end
 })
 
 Tab:Slider({
-    Title = "FOV Radius",
-    Desc = "ปรับขนาดวง FOV",
-    Min = 50,
-    Max = 300,
+    Title = "FOV Size",
+    Desc = "ขนาดวงล็อกเป้า",
     Default = FOVRadius,
-    Callback = function(value)
-        FOVRadius = value
+    Min = 50,
+    Max = 450,
+    Callback = function(v)
+        FOVRadius = v
+    end
+})
+
+Tab:Dropdown({
+    Title = "Aim Part",
+    Desc = "เลือกจุดล็อกเป้า",
+    Items = {"Head","HumanoidRootPart"},
+    Default = "Head",
+    Callback = function(part)
+        TargetPartName = part
     end
 })
