@@ -185,65 +185,103 @@ Tab:Slider({
     end
 })
 
+
+------------------------------
+--  SILENT AIM FULL PACKAGE --
+--     TAB NAME:  TEST      --
+------------------------------
+
 --== SERVICES ==--
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-local Mouse = LocalPlayer:GetMouse()
+local Camera = Workspace.CurrentCamera
 
---== CONFIG ==--
+--== VARIABLES ==--
 local SilentAimEnabled = false
-local FOVEnabled = false
-local FOVRadius = 120
-local PredictionAmount = 0.125
+local WallbangEnabled = false
+local FOVRadius = 150
+local CurrentTarget = nil
 
---== UI CONTAINER ==--
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-ScreenGui.IgnoreGuiInset = true
+--== DRAWINGS ==--
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Filled = false
+FOVCircle.NumSides = 100
+FOVCircle.Thickness = 2
+FOVCircle.Visible = false
 
---== FOV CIRCLE ==--
-local FOV = Instance.new("Frame")
-FOV.Size = UDim2.fromOffset(FOVRadius * 2, FOVRadius * 2)
-FOV.AnchorPoint = Vector2.new(0.5, 0.5)
-FOV.Position = UDim2.fromScale(0.5, 0.5)
-FOV.BackgroundTransparency = 1
-FOV.Visible = false
-FOV.Parent = ScreenGui
-
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Thickness = 3
-UIStroke.Color = Color3.fromRGB(255, 0, 255)
-UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-UIStroke.Parent = FOV
-
---== DRAWING OBJECTS ==--
 local Tracer = Drawing.new("Line")
-Tracer.Thickness = 2
+Tracer.Thickness = 1
 Tracer.Visible = false
 
-local Heart = Drawing.new("Text")
-Heart.Size = 28
-Heart.Center = true
-Heart.Outline = true
-Heart.Visible = false
-Heart.Text = "❤"
+local TargetRing = Drawing.new("Circle")
+TargetRing.Radius = 45
+TargetRing.Filled = false
+TargetRing.Thickness = 2
+TargetRing.Visible = false
+TargetRing.NumSides = 50
 
---== FUNCTION: Find target in FOV ==--
-local function GetTarget()
-    local closest, distance = nil, FOVRadius
+--------------------------------------------------------
+--== ADVANCED PREDICTION + ANTI AIM BREAKER ==--
+--------------------------------------------------------
+local function getTrueVelocity(hrp)
+    if not hrp then return Vector3.zero end
+    local vel = hrp.Velocity
+    if vel.Magnitude > 180 then  -- anti aim breaker
+        vel = vel.Unit * 180
+    end
+    return vel
+end
 
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and
-           plr.Character and
-           plr.Character:FindFirstChild("HumanoidRootPart") then
+local function getAcceleration(hrp)
+    if not hrp then return Vector3.zero end
+    local last = hrp:GetAttribute("_lastVel") or Vector3.zero
+    local now = hrp.Velocity
+    hrp:SetAttribute("_lastVel", now)
+    return (now - last) * 0.15
+end
 
-            local pos, onScreen = Camera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
-            if onScreen then
-                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
-                if dist < distance then
-                    distance = dist
+local function superPredict(head, hrp)
+    if not head or not hrp then return head.Position end
+
+    local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+    if ping <= 0 then ping = 0.12 end
+
+    local vel = getTrueVelocity(hrp)
+    local accel = getAcceleration(hrp)
+    local jumpBoost = Vector3.new(0, math.clamp(vel.Y, -18, 28) * ping, 0)
+
+    return head.Position + (vel * ping * 1.4) + (accel * ping * 1.1) + jumpBoost
+end
+
+local function breakAntiAim(player)
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    if hrp.AssemblyAngularVelocity.Magnitude > 18 then
+        local vel = hrp.Velocity
+        if vel.Magnitude > 2 then
+            hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + vel)
+        end
+    end
+end
+
+--------------------------------------------------------
+--== FIND TARGET INSIDE FOV ==--
+--------------------------------------------------------
+local function getClosestTarget()
+    local closest, shortest = nil, FOVRadius
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+            local head = plr.Character.Head
+            local pos, visible = Camera:WorldToViewportPoint(head.Position)
+            if visible then
+                local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                if dist <= shortest then
+                    shortest = dist
                     closest = plr
                 end
             end
@@ -253,115 +291,131 @@ local function GetTarget()
     return closest
 end
 
---== PREDICTION LOGIC ==--
-local function PredictPosition(target)
-    local hrp = target.Character.HumanoidRootPart
-    return hrp.Position + hrp.Velocity * PredictionAmount
+--------------------------------------------------------
+--== WALL CHECK ==--
+--------------------------------------------------------
+local function behindWall(from, to)
+    local ray = Ray.new(from, (to - from))
+    local ignore = {LocalPlayer.Character}
+    local hit = Workspace:FindPartOnRayWithIgnoreList(ray, ignore)
+    return hit ~= nil
 end
 
---== MAIN VISUAL LOOP ==--
+--------------------------------------------------------
+--== HOOK SHOOT EVENT ==--
+--------------------------------------------------------
+local Remote = game.ReplicatedStorage:WaitForChild("Remotes").Send
+local old; old = hookfunction(Remote.FireServer, function(self, ...)
+    local args = {...}
+
+    if self == Remote and args[2] == "shoot_gun" and CurrentTarget then
+        breakAntiAim(CurrentTarget)
+
+        local head = CurrentTarget.Character.Head
+        local hrp = CurrentTarget.Character.HumanoidRootPart
+        local myHead = LocalPlayer.Character.Head
+        local aimPos = superPredict(head, hrp)
+
+        if WallbangEnabled and behindWall(myHead.Position, aimPos) then
+            args[4] = CFrame.new(math.huge, math.huge, math.huge)
+        else
+            args[4] = CFrame.new(myHead.Position, aimPos)
+        end
+
+        args[5] = {
+            {
+                {
+                    Instance = head,
+                    Normal = Vector3.new(0, 1, 0),
+                    Position = aimPos
+                }
+            }
+        }
+    end
+
+    return old(self, unpack(args))
+end)
+
+--------------------------------------------------------
+--== RENDER VISUALS (FOV + TRACER + TARGET RING) ==--
+--------------------------------------------------------
+local hueF = 0
+local hueT = 0
+
 RunService.RenderStepped:Connect(function()
-    local t = tick() * 2
-    UIStroke.Color = Color3.fromHSV((t % 1), 1, 1)
+    -- FOV Circle Gradient
+    hueF = (hueF + 0.008) % 1
+    local purple = 0.78
+    local pink = 0.9
+    local gradientF = purple + (pink - purple) * math.abs(math.sin(hueF * math.pi))
 
-    FOV.Size = UDim2.fromOffset(FOVRadius * 2, FOVRadius * 2)
-    FOV.Visible = SilentAimEnabled and FOVEnabled
+    FOVCircle.Color = Color3.fromHSV(gradientF,1,1)
+    FOVCircle.Visible = SilentAimEnabled
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    FOVCircle.Radius = FOVRadius
 
-    local target = nil
-    if SilentAimEnabled then
-        target = GetTarget()
-    end
+    -- Update target
+    CurrentTarget = SilentAimEnabled and getClosestTarget() or nil
 
-    if not target or not FOV.Visible then
-        Tracer.Visible = false
-        Heart.Visible = false
-        return
-    end
+    if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("Head") then
+        local head = CurrentTarget.Character.Head
+        local hrp = CurrentTarget.Character.HumanoidRootPart
+        local headPos, visible = Camera:WorldToViewportPoint(head.Position)
 
-    local predicted = PredictPosition(target)
-    local screenPos, onScreen = Camera:WorldToViewportPoint(predicted)
+        if visible then
+            -- TRACER
+            Tracer.Visible = true
+            Tracer.Color = Color3.fromHSV(gradientF,1,1)
+            Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+            Tracer.To = Vector2.new(headPos.X, headPos.Y)
 
-    if onScreen then
-        Tracer.Visible = true
-        Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-        Tracer.To = Vector2.new(screenPos.X, screenPos.Y)
-        Tracer.Color = Color3.fromHSV((t % 1), 1, 1)
+            -- TARGET RING
+            hueT = (hueT + 0.01) % 1
+            local gradientT = purple + (pink - purple) * math.abs(math.sin(hueT * math.pi))
+            TargetRing.Color = Color3.fromHSV(gradientT,1,1)
 
-        Heart.Visible = true
-        Heart.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
-        Heart.Color = Color3.fromHSV((t % 1), 1, 1)
+            TargetRing.Visible = true
+            TargetRing.Position = Vector2.new(headPos.X, headPos.Y)
+
+        else
+            Tracer.Visible = false
+            TargetRing.Visible = false
+        end
     else
         Tracer.Visible = false
-        Heart.Visible = false
+        TargetRing.Visible = false
     end
 end)
 
---== SILENT AIM HOOK ==--
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
-
-local old = mt.__namecall
-mt.__namecall = function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-
-    if SilentAimEnabled and method == "FireServer" and tostring(self) == "UpdateMousePos" then
-        local target = GetTarget()
-        if target then
-            args[1] = PredictPosition(target)
-            return old(self, unpack(args))
-        end
-    end
-
-    return old(self, ...)
-end
-
---== TOGGLE FUNCTIONS ==--
-function ToggleSilent(v)
-    SilentAimEnabled = v
-    FOV.Visible = SilentAimEnabled and FOVEnabled
-end
-
-function ToggleFOV(v)
-    FOVEnabled = v
-    FOV.Visible = SilentAimEnabled and FOVEnabled
-end
-
-function SetFOVSize(v)
-    FOVRadius = v
-end
-
------------------------------------------------------------------
---== WIND UI ==--
------------------------------------------------------------------
+--------------------------------------------------------
+--== WINDUI TAB + CONTROLS ==--
+-------------------------------------------------------
 
 
-local AimTab = Window:Tab({Title = "Aimbot", Icon = "crosshair"})
+local Tab_Test = Window:Tab({Title = "Test", Icon = "crosshair"})
 
-AimTab:Toggle({
+Tab_Test:Toggle({
     Title = "Silent Aim",
     Default = false,
     Callback = function(v)
-        ToggleSilent(v)
+        SilentAimEnabled = v
     end
 })
 
-AimTab:Toggle({
-    Title = "FOV + Tracer + Heart",
+Tab_Test:Toggle({
+    Title = "Wallbang (GoodGun)",
     Default = false,
     Callback = function(v)
-        ToggleFOV(v)
+        WallbangEnabled = v
     end
 })
 
-AimTab:Slider({
+Tab_Test:Slider({
     Title = "FOV Size",
-    Min = 20,
+    Min = 30,
     Max = 300,
-    Default = 120,
-    Callback = function(val)
-        SetFOVSize(val)
+    Default = 150,
+    Callback = function(v)
+        FOVRadius = v
     end
 })
-
-
