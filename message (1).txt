@@ -189,6 +189,7 @@ Tab:Slider({
 ------------------------------
 --  SILENT AIM FULL PACKAGE --
 --     TAB NAME:  TEST      --
+--   NO TARGET RING VERSION --
 ------------------------------
 
 --== SERVICES ==--
@@ -204,7 +205,7 @@ local WallbangEnabled = false
 local FOVRadius = 150
 local CurrentTarget = nil
 
---== DRAWINGS ==--
+--== DRAWINGS (FOV + TRACER) ==--
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Filled = false
 FOVCircle.NumSides = 100
@@ -215,12 +216,6 @@ local Tracer = Drawing.new("Line")
 Tracer.Thickness = 1
 Tracer.Visible = false
 
-local TargetRing = Drawing.new("Circle")
-TargetRing.Radius = 45
-TargetRing.Filled = false
-TargetRing.Thickness = 2
-TargetRing.Visible = false
-TargetRing.NumSides = 50
 
 --------------------------------------------------------
 --== ADVANCED PREDICTION + ANTI AIM BREAKER ==--
@@ -267,6 +262,7 @@ local function breakAntiAim(player)
     end
 end
 
+
 --------------------------------------------------------
 --== FIND TARGET INSIDE FOV ==--
 --------------------------------------------------------
@@ -291,6 +287,7 @@ local function getClosestTarget()
     return closest
 end
 
+
 --------------------------------------------------------
 --== WALL CHECK ==--
 --------------------------------------------------------
@@ -301,8 +298,9 @@ local function behindWall(from, to)
     return hit ~= nil
 end
 
+
 --------------------------------------------------------
---== HOOK SHOOT EVENT ==--
+--== HOOK SHOOT ==--
 --------------------------------------------------------
 local Remote = game.ReplicatedStorage:WaitForChild("Remotes").Send
 local old; old = hookfunction(Remote.FireServer, function(self, ...)
@@ -336,17 +334,18 @@ local old; old = hookfunction(Remote.FireServer, function(self, ...)
     return old(self, unpack(args))
 end)
 
+
+
 --------------------------------------------------------
---== RENDER VISUALS (FOV + TRACER + TARGET RING) ==--
+--== RENDER VISUALS (FOV + TRACER ONLY) ==--
 --------------------------------------------------------
 local hueF = 0
-local hueT = 0
 
 RunService.RenderStepped:Connect(function()
-    -- FOV Circle Gradient
+    -- FOV Circle Gradient (Purple → Pink)
     hueF = (hueF + 0.008) % 1
     local purple = 0.78
-    local pink = 0.9
+    local pink   = 0.90
     local gradientF = purple + (pink - purple) * math.abs(math.sin(hueF * math.pi))
 
     FOVCircle.Color = Color3.fromHSV(gradientF,1,1)
@@ -354,45 +353,37 @@ RunService.RenderStepped:Connect(function()
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     FOVCircle.Radius = FOVRadius
 
-    -- Update target
+    -- Update Target
     CurrentTarget = SilentAimEnabled and getClosestTarget() or nil
 
+    -- Update Tracer
     if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("Head") then
         local head = CurrentTarget.Character.Head
-        local hrp = CurrentTarget.Character.HumanoidRootPart
         local headPos, visible = Camera:WorldToViewportPoint(head.Position)
 
         if visible then
-            -- TRACER
             Tracer.Visible = true
             Tracer.Color = Color3.fromHSV(gradientF,1,1)
             Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
             Tracer.To = Vector2.new(headPos.X, headPos.Y)
-
-            -- TARGET RING
-            hueT = (hueT + 0.01) % 1
-            local gradientT = purple + (pink - purple) * math.abs(math.sin(hueT * math.pi))
-            TargetRing.Color = Color3.fromHSV(gradientT,1,1)
-
-            TargetRing.Visible = true
-            TargetRing.Position = Vector2.new(headPos.X, headPos.Y)
-
         else
             Tracer.Visible = false
-            TargetRing.Visible = false
         end
     else
         Tracer.Visible = false
-        TargetRing.Visible = false
     end
 end)
 
+
+
 --------------------------------------------------------
---== WINDUI TAB + CONTROLS ==--
--------------------------------------------------------
+--== WINDUI TAB (TEST) ==--
+--------------------------------------------------------
 
-
-local Tab_Test = Window:Tab({Title = "Test", Icon = "crosshair"})
+local Tab_Test = Window:Tab({
+    Title = "Test",
+    Icon = "crosshair"
+})
 
 Tab_Test:Toggle({
     Title = "Silent Aim",
