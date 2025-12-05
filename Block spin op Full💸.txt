@@ -1353,23 +1353,35 @@ if not isMobile then
     SilentFOVCircle.Visible = false
 else
     local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "MobileFOV"
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    SilentFOVCircle = Instance.new("Frame")
-    SilentFOVCircle.Size = UDim2.fromOffset(FOVRadius * 2, FOVRadius * 2)
-    SilentFOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-    SilentFOVCircle.Position = UDim2.fromScale(0.5, 0.5)
-    SilentFOVCircle.BackgroundTransparency = 1
-    local circleUI = Instance.new("UICorner")
-    circleUI.CornerRadius = UDim.new(1, 0)
-    circleUI.Parent = SilentFOVCircle
-    local border = Instance.new("UIStroke")
-    border.Color = Color3.fromRGB(255, 255, 255)
-    border.Thickness = 2 -- Increased thickness for better visibility
-    border.Transparency = 0.2 -- Slightly less transparent for better visibility
-    border.Parent = SilentFOVCircle
-    SilentFOVCircle.Parent = ScreenGui
-end
+ScreenGui.Name = "MobileFOV"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+SilentFOVCircle = Instance.new("Frame")
+SilentFOVCircle.Size = UDim2.fromOffset(FOVRadius * 2, FOVRadius * 2)
+SilentFOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+SilentFOVCircle.Position = UDim2.fromScale(0.5, 0.5)
+SilentFOVCircle.BackgroundTransparency = 1
+SilentFOVCircle.Parent = ScreenGui
+SilentFOVCircle.ZIndex = 9999
+
+-- วงกลม
+local circleUI = Instance.new("UICorner")
+circleUI.CornerRadius = UDim.new(1, 0)
+circleUI.Parent = SilentFOVCircle
+
+-- ขอบไล่สีม่วงสด → ชมพูสด
+local border = Instance.new("UIStroke")
+border.Thickness = 3
+border.Transparency = 0
+border.Parent = SilentFOVCircle
+
+local grad = Instance.new("UIGradient")
+grad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(170, 0, 255)), -- ม่วงสด
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 170))  -- ชมพูสด
+})
+grad.Rotation = 45
+grad.Parent = border
 local function isShotgun()
     if not Character then
         return false
@@ -3127,6 +3139,7 @@ if loadFunc then
     loadFunc(myConfig)
 
 end
+
 
 
 
