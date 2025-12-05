@@ -335,7 +335,8 @@ end
 --== WIND UI ==--
 -----------------------------------------------------------------
 
-local AimTab = Window:Tab("Silent Aim")
+
+local AimTab = Window:Tab({Title = "Aimbot", Icon = "crosshair"})
 
 AimTab:Toggle({
     Title = "Silent Aim",
@@ -362,4 +363,5 @@ AimTab:Slider({
         SetFOVSize(val)
     end
 })
+
 
