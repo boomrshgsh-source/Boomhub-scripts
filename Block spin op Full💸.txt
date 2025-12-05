@@ -27,51 +27,38 @@ local isMobile = UserInputService.TouchEnabled and not UserInputService.Keyboard
 local WindUI = nil
 pcall(
     function()
-        Version = "1.6.53"
-WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/download/" .. Version .. "/main.lua"))()
+        
+-- ⭐ บังคับให้เริ่มโหมดคอมก่อน
+local UIS = game:GetService("UserInputService")
+local isMobile = false -- เริ่มต้นเป็น Computer Mode
 
-local Window
-if WindUI then
-    Window = WindUI:CreateWindow({
-        Title = "ERROR HUB | Block spin | 💸",
-        Icon = "rbxassetid://87372447687978",
-        Author = "Block spin",
-        Folder = "ERROR HUB",
-        Size = UDim2.fromOffset(400, 200),
-        Theme = "Dark",
-        Transparent = true,
-        Resizable = true,
-        KeyCode = Enum.KeyCode.G
-    })
-else
-    Window = {
-        Toggle = function() end,
-        UI = {Enabled = true}
-    }
-end
+-- ค่อยตรวจมือถือจริงหลังโหลด UI เสร็จ
+task.defer(function()
+    if UIS.TouchEnabled and not UIS.KeyboardEnabled then
+        isMobile = true
+    end
+end)
 
-local TweenService = game:GetService("TweenService")
-local ScreenGui = Instance.new("ScreenGui")
 local OpenIcon = Instance.new("TextButton")
-local UICorner = Instance.new("UICorner")
 local IconImage = Instance.new("ImageLabel")
+local ScreenGui = Instance.new("ScreenGui")
+local UICorner = Instance.new("UICorner")
 local IconCorner = Instance.new("UICorner")
 
 ScreenGui.Name = "GAMEDEE"
-ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = game.CoreGui
 
 ---------------------------------------------------------------------
--- ⭐ แสดงปุ่มทั้งมือถือและคอม (ลบ if not mobile ออกแล้ว)
+-- ⭐ ตอนรันครั้งแรกถือว่าเป็นโหมดคอม (แสดงปุ่ม)
 ---------------------------------------------------------------------
 
 OpenIcon.Size = UDim2.new(0, 50, 0, 50)
 OpenIcon.Position = UDim2.new(0.5, 0, 0, 40)
 OpenIcon.AnchorPoint = Vector2.new(0.5, 0)
 OpenIcon.BackgroundColor3 = Color3.fromRGB(40, 180, 90)
-OpenIcon.Text = ""
 OpenIcon.BackgroundTransparency = 0.2
 OpenIcon.BorderSizePixel = 2
+OpenIcon.Text = ""
 OpenIcon.Active = true
 OpenIcon.Draggable = true
 OpenIcon.Parent = ScreenGui
@@ -81,7 +68,6 @@ UICorner.Parent = OpenIcon
 
 IconImage.Size = UDim2.new(1, 0, 1, 0)
 IconImage.BackgroundTransparency = 1
-IconImage.Position = UDim2.new(0, 0, 0, 0)
 IconImage.Image = "rbxassetid://873724476879"
 IconImage.Parent = OpenIcon
 
@@ -89,9 +75,10 @@ IconCorner.CornerRadius = UDim.new(0, 8)
 IconCorner.Parent = IconImage
 
 ---------------------------------------------------------------------
--- ⭐ อนิเมชันปุ่มกด
+-- ⭐ อนิเมชันเหมือนเดิม
 ---------------------------------------------------------------------
 
+local TweenService = game:GetService("TweenService")
 local currentTween
 local isAnimating = false
 
@@ -108,7 +95,7 @@ local function animateButton(button)
     tweenUp:Play()
 
     tweenUp.Completed:Connect(function()
-        task.wait(0.2)
+        task.wait(0.25)
         currentTween = tweenDown
         tweenDown:Play()
         tweenDown.Completed:Connect(function()
@@ -118,16 +105,13 @@ local function animateButton(button)
 end
 
 ---------------------------------------------------------------------
--- ⭐ กดปุ่มเพื่อเปิด–ปิด WindUI
+-- ⭐ ปุ่มกดเปิด–ปิด UI เหมือนเดิม
 ---------------------------------------------------------------------
 
 OpenIcon.MouseButton1Click:Connect(function()
     animateButton(OpenIcon)
-
     if Window and Window.UI then
         Window.UI.Enabled = not Window.UI.Enabled
-    elseif Window.Toggle then
-        Window:Toggle()
     end
 end)
 local Remote
@@ -3102,6 +3086,7 @@ if loadFunc then
     loadFunc(myConfig)
 
 end
+
 
 
 
