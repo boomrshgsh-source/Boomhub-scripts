@@ -1,26 +1,12 @@
+--== LOAD WINDUI ==--
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-local Players, RunService, Camera, LocalPlayer, Mouse, UIS =
-    game:GetService("Players"), game:GetService("RunService"),
-    workspace.CurrentCamera, game.Players.LocalPlayer, game.Players.LocalPlayer:GetMouse(),
-    game:GetService("UserInputService")
-
-local Window = WindUI:CreateWindow({
-    Title = "Nexus x dev",
-    Icon = "rbxassetid://137877095538630",
-    Author = "",
-    Folder = "GotHubFolder",
-    Size = UDim2.fromOffset(400, 200),
-    Theme = "Dark",
-    Transparent = true,
-    Resizable = true,
-})
 
 --== SERVICES ==--
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
 --== VARIABLES ==--
 local SilentAimEnabled = false
@@ -146,7 +132,7 @@ RunService.RenderStepped:Connect(function()
     FOVCircle.Color = Color3.fromHSV(gradientF,1,1)
     FOVCircle.Visible = SilentAimEnabled
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    FOVCircle.Radius = FOVRadius -- ใช้ค่า slider แบบ real-time
+    FOVCircle.Radius = FOVRadius
 
     -- Update Target
     CurrentTarget = SilentAimEnabled and getClosestTarget() or nil
@@ -156,9 +142,11 @@ RunService.RenderStepped:Connect(function()
         local head = CurrentTarget.Character.Head
         local headPos, visible = Camera:WorldToViewportPoint(head.Position)
         if visible then
-            Tracer.Visible = true
+            local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+            local dist = (Vector2.new(headPos.X, headPos.Y) - center).Magnitude
+            Tracer.Visible = dist <= FOVRadius and SilentAimEnabled
             Tracer.Color = Color3.fromHSV(gradientF,1,1)
-            Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+            Tracer.From = center
             Tracer.To = Vector2.new(headPos.X, headPos.Y)
         else
             Tracer.Visible = false
@@ -168,7 +156,17 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
---== WINDUI TAB (TEST) ==--
+--== WINDUI WINDOW ==--
+local Window = WindUI:CreateWindow({
+    Title = "Nexus x dev",
+    Icon = "rbxassetid://137877095538630",
+    Folder = "GotHubFolder",
+    Size = UDim2.fromOffset(400, 200),
+    Theme = "Dark",
+    Transparent = true,
+    Resizable = true,
+})
+
 local Tab_Test = Window:Tab({
     Title = "Test",
     Icon = "crosshair"
@@ -196,6 +194,6 @@ Tab_Test:Slider({
     Max = 300,
     Default = 150,
     Callback = function(v)
-        FOVRadius = tonumber(v) -- แก้ให้เป็น number แน่นอน
+        FOVRadius = tonumber(v)
     end
 })
