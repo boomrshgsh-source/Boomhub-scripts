@@ -1386,52 +1386,87 @@ local function isShotgun()
 end
 
 -- == ENHANCED SMART SILENT AIM SYSTEM ==
+
+-- ฟังก์ชันคาดการณ์ตำแหน่งเป้าหมาย (ใช้ความเร็ว HumanoidRootPart คำนวณ)
+local function predictPosition(head, hrp)
+    if not head or not hrp then return nil end
+    local velocity = hrp.Velocity or Vector3.new(0,0,0)
+    local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+    if not myHead then return head.Position end
+
+    local startPos = myHead.Position
+    local distance = (head.Position - startPos).Magnitude
+    local bulletSpeed = 300 -- ปรับตามสปีดกระสุนในเกมจริง
+    local travelTime = distance / bulletSpeed
+
+    local predictedPos = head.Position + (velocity * travelTime)
+    return predictedPos
+end
+
 local oldFire
+
 if Remote and Remote.FireServer then
-    local ok, res = pcall(function()
+    local success, err = pcall(function()
         oldFire = hookfunction(Remote.FireServer, function(self, ...)
             if self ~= Remote then return oldFire(self, ...) end
             local args = {...}
-            
+
             if (SilentAimEnabled or GoodGunEnabled) and args[2] == "shoot_gun" and CurrentTarget then
-                local head = CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("Head")
-                local hrp = CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
-                local humanoid = CurrentTarget.Character:FindFirstChild("Humanoid")
-                
-                if head and humanoid and hrp and humanoid.Health > 0 then
-                    local aimPos = predictPosition(head, hrp)
-                    local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
-                    
-                    if myHead then
-                        -- ตรวจสอบว่าเป้าหมายอยู่หลังกำแพงหรือไม่
-                        local isTargetBehindWall = isBehindWall(myHead.Position, aimPos)
-                        
-                        -- ระบบฉลาด: ถ้าอยู่หลังกำแพงและเปิด GoodGun ให้ยิงทะลุ, ถ้าอยู่ด้านหน้าก็ยิงปกติ
-                        if GoodGunEnabled and isTargetBehindWall then
-                            -- โหมดยิงทะลุกำแพง
-                            args[4] = CFrame.new(math.huge, math.huge, math.huge)
-                            args[5] = {
-                                [1] = {
-                                    [1] = {
-                                        ["Instance"] = head,
-                                        ["Normal"] = Vector3.new(0, 1, 0),
-                                        ["Position"] = aimPos
-                                    }
-                                }
-                            }
-                        else
-                            -- โหมดยิงปกติ (ไม่ทะลุกำแพง)
-                            args[4] = CFrame.new(LocalPlayer.Character.Head.Position, aimPos)
-                            args[5] = {
-                                [1] = {
-                                    [1] = {
-                                        ["Instance"] = head,
-                                        ["Normal"] = Vector3.new(0, 1, 0),
-                                        ["Position"] = aimPos
-                                    }
-                                }
-                            }
+                local character = CurrentTarget.Character
+                if character then
+                    local head = character:FindFirstChild("Head")
+                    local hrp = character:FindFirstChild("HumanoidRootPart")
+                    local humanoid = character:FindFirstChild("Humanoid")
+
+                    if head and hrp and humanoid and humanoid.Health > 0 then
+                        local aimPos = predictPosition(head, hrp)
+                        if not aimPos then
+                            aimPos = head.Position
                         end
+
+                        local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+                        if myHead then
+                            local isTargetBehindWall = isBehindWall(myHead.Position, aimPos)
+
+                            if GoodGunEnabled and isTargetBehindWall then
+                                -- ยิงทะลุกำแพง: ตั้งตำแหน่งยิงตรงเป้าหมายคาดการณ์
+                                args[4] = CFrame.new(aimPos)
+                                args[5] = {
+                                    [1] = {
+                                        [1] = {
+                                            ["Instance"] = head,
+                                            ["Normal"] = Vector3.new(0, 1, 0),
+                                            ["Position"] = aimPos
+                                        }
+                                    }
+                                }
+                            else
+                                -- ยิงปกติ: ตั้ง CFrame จากหัวเราไปยังตำแหน่งเป้าหมายคาดการณ์
+                                args[4] = CFrame.new(myHead.Position, aimPos)
+                                args[5] = {
+                                    [1] = {
+                                        [1] = {
+                                            ["Instance"] = head,
+                                            ["Normal"] = Vector3.new(0, 1, 0),
+                                            ["Position"] = aimPos
+                                        }
+                                    }
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+
+            return oldFire(self, unpack(args))
+        end)
+    end)
+
+    if not success then
+        warn("Failed to hook Remote.FireServer: " .. tostring(err))
+    end
+end
+
 
                         -- เอฟเฟกต์กระสุน
                         local myPos = LocalPlayer.Character.Head.Position
@@ -3127,6 +3162,7 @@ if loadFunc then
     loadFunc(myConfig)
 
 end
+
 
 
 
