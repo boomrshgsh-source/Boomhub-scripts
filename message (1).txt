@@ -15,13 +15,6 @@ local Window = WindUI:CreateWindow({
     Resizable = true,
 })
 
-
-------------------------------
---  SILENT AIM FULL PACKAGE --
---     TAB NAME:  TEST      --
---   NO TARGET RING VERSION --
-------------------------------
-
 --== SERVICES ==--
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -46,14 +39,11 @@ local Tracer = Drawing.new("Line")
 Tracer.Thickness = 1
 Tracer.Visible = false
 
-
---------------------------------------------------------
 --== ADVANCED PREDICTION + ANTI AIM BREAKER ==--
---------------------------------------------------------
 local function getTrueVelocity(hrp)
     if not hrp then return Vector3.zero end
     local vel = hrp.Velocity
-    if vel.Magnitude > 180 then  -- anti aim breaker
+    if vel.Magnitude > 180 then
         vel = vel.Unit * 180
     end
     return vel
@@ -69,21 +59,17 @@ end
 
 local function superPredict(head, hrp)
     if not head or not hrp then return head.Position end
-
     local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     if ping <= 0 then ping = 0.12 end
-
     local vel = getTrueVelocity(hrp)
     local accel = getAcceleration(hrp)
     local jumpBoost = Vector3.new(0, math.clamp(vel.Y, -18, 28) * ping, 0)
-
     return head.Position + (vel * ping * 1.4) + (accel * ping * 1.1) + jumpBoost
 end
 
 local function breakAntiAim(player)
     local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-
     if hrp.AssemblyAngularVelocity.Magnitude > 18 then
         local vel = hrp.Velocity
         if vel.Magnitude > 2 then
@@ -92,14 +78,10 @@ local function breakAntiAim(player)
     end
 end
 
-
---------------------------------------------------------
 --== FIND TARGET INSIDE FOV ==--
---------------------------------------------------------
 local function getClosestTarget()
     local closest, shortest = nil, FOVRadius
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-
     for _,plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
             local head = plr.Character.Head
@@ -113,14 +95,10 @@ local function getClosestTarget()
             end
         end
     end
-
     return closest
 end
 
-
---------------------------------------------------------
 --== WALL CHECK ==--
---------------------------------------------------------
 local function behindWall(from, to)
     local ray = Ray.new(from, (to - from))
     local ignore = {LocalPlayer.Character}
@@ -128,28 +106,21 @@ local function behindWall(from, to)
     return hit ~= nil
 end
 
-
---------------------------------------------------------
 --== HOOK SHOOT ==--
---------------------------------------------------------
 local Remote = game.ReplicatedStorage:WaitForChild("Remotes").Send
 local old; old = hookfunction(Remote.FireServer, function(self, ...)
     local args = {...}
-
     if self == Remote and args[2] == "shoot_gun" and CurrentTarget then
         breakAntiAim(CurrentTarget)
-
         local head = CurrentTarget.Character.Head
         local hrp = CurrentTarget.Character.HumanoidRootPart
         local myHead = LocalPlayer.Character.Head
         local aimPos = superPredict(head, hrp)
-
         if WallbangEnabled and behindWall(myHead.Position, aimPos) then
             args[4] = CFrame.new(math.huge, math.huge, math.huge)
         else
             args[4] = CFrame.new(myHead.Position, aimPos)
         end
-
         args[5] = {
             {
                 {
@@ -160,17 +131,11 @@ local old; old = hookfunction(Remote.FireServer, function(self, ...)
             }
         }
     end
-
     return old(self, unpack(args))
 end)
 
-
-
---------------------------------------------------------
---== RENDER VISUALS (FOV + TRACER ONLY) ==--
---------------------------------------------------------
+--== RENDER VISUALS (FOV + TRACER) ==--
 local hueF = 0
-
 RunService.RenderStepped:Connect(function()
     -- FOV Circle Gradient (Purple → Pink)
     hueF = (hueF + 0.008) % 1
@@ -181,7 +146,7 @@ RunService.RenderStepped:Connect(function()
     FOVCircle.Color = Color3.fromHSV(gradientF,1,1)
     FOVCircle.Visible = SilentAimEnabled
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    FOVCircle.Radius = FOVRadius
+    FOVCircle.Radius = FOVRadius -- ใช้ค่า slider แบบ real-time
 
     -- Update Target
     CurrentTarget = SilentAimEnabled and getClosestTarget() or nil
@@ -190,7 +155,6 @@ RunService.RenderStepped:Connect(function()
     if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("Head") then
         local head = CurrentTarget.Character.Head
         local headPos, visible = Camera:WorldToViewportPoint(head.Position)
-
         if visible then
             Tracer.Visible = true
             Tracer.Color = Color3.fromHSV(gradientF,1,1)
@@ -204,12 +168,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-
-
---------------------------------------------------------
 --== WINDUI TAB (TEST) ==--
---------------------------------------------------------
-
 local Tab_Test = Window:Tab({
     Title = "Test",
     Icon = "crosshair"
@@ -237,7 +196,6 @@ Tab_Test:Slider({
     Max = 300,
     Default = 150,
     Callback = function(v)
-        FOVRadius = v
+        FOVRadius = tonumber(v) -- แก้ให้เป็น number แน่นอน
     end
 })
-
