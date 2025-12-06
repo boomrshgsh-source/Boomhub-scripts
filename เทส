@@ -1,0 +1,1010 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
+local Workspace = game:GetService("Workspace")
+
+-- =========================
+-- Local Player & Character
+-- =========================
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- =========================
+-- Camera & Mouse
+-- =========================
+local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- =========================
+-- UI Setup
+-- =========================
+local Window = WindUI:CreateWindow({
+    Title = "Advanced Silent Aim - Target Select",
+    Icon = "rbxassetid://87372447687978",
+    Author = "Enhanced System",
+    Folder = "SilentAim Hub",
+    Size = UDim2.fromOffset(500, 600),
+    Theme = "Dark",
+    Transparent = true,
+    Resizable = false,
+    KeyCode = Enum.KeyCode.G
+})
+
+-- =========================
+-- สถานะและการตั้งค่า
+-- =========================
+local SilentAimEnabled = false
+local GoodGunEnabled = false
+local FOVRadius = 120
+local CurrentTarget = nil
+local TargetLockType = "Head" -- "Head" หรือ "Humanoid"
+local SilentFOVCircle = nil
+-- =========================
+-- อาวุธที่รองรับ
+-- =========================
+local GunNames = {
+    "P226", "MP5", "M24", "Draco", "Glock", "Sawnoff", "Uzi", "G3", "C9",
+    "Hunting Rifle", "Anaconda", "AK47", "Remington", "Double Barrel",
+    "AR-15", "M4A1", "Desert Eagle", "Vector", "AWM", "Shotgun", "Rifle"
+}
+
+-- ใช้ Set สำหรับการค้นหาที่เร็วขึ้น
+local GunLookup = {}
+for _, name in ipairs(GunNames) do
+    GunLookup[name:lower()] = true
+end
+
+-- =========================
+-- Advanced Prediction System
+-- =========================
+local AutoPrediction = {
+    prevPrediction = 0.085,
+    prevHorizontalVelocity = Vector3.new(0, 0, 0),
+    
+    -- เอาเฉพาะความเร็วแนวนอน (ตัดการหมุนออก)
+    GetHorizontalVelocity = function(self, velocity)
+        return Vector3.new(velocity.X, 0, velocity.Z)
+    end,
+    
+    -- ตรวจสอบการเคลื่อนที่จริง (ไม่นับการหมุน)
+    IsActuallyMoving = function(self, humanoidRootPart)
+        if not humanoidRootPart then return false end
+        
+        local velocity = humanoidRootPart.Velocity
+        local horizontalVelocity = self:GetHorizontalVelocity(velocity)
+        
+        -- ถ้ามี Humanoid ให้ตรวจสอบ MoveDirection
+        local character = humanoidRootPart.Parent
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        
+        if humanoid then
+            local moveDirection = humanoid.MoveDirection
+            local isMoving = moveDirection.Magnitude > 0.1
+            local horizontalSpeed = horizontalVelocity.Magnitude
+            
+            return isMoving and horizontalSpeed > 2
+        end
+        
+        return horizontalVelocity.Magnitude > 2
+    end,
+    
+    Calculate = function(self, targetPosition, targetVelocity, distance, isActuallyMoving)
+        local basePred = 0.085
+        local maxSpeed = 25
+        local maxDist = 350
+        local learnRate = 0.25
+        local smoothRate = 0.5
+
+        -- ใช้เฉพาะความเร็วแนวนอน
+        local horizontalVelocity = self:GetHorizontalVelocity(targetVelocity)
+        local speed = horizontalVelocity.Magnitude
+        
+        -- ปรับตามว่ากำลังเคลื่อนที่จริงหรือไม่
+        local speedFactor = 0
+        if isActuallyMoving then
+            speedFactor = math.clamp(speed / maxSpeed, 0, 1)
+        else
+            speedFactor = math.clamp(speed / 5, 0, 0.2)
+        end
+
+        local distFactor = math.clamp(distance / maxDist, 0, 1)
+
+        -- ACCELERATION FACTOR (เฉพาะแนวนอน)
+        local accel = (horizontalVelocity - self.prevHorizontalVelocity).Magnitude
+        local accelFactor = math.clamp(accel / 15, 0, 1)
+        self.prevHorizontalVelocity = horizontalVelocity
+
+        -- FINAL PREDICTION CALCULATION
+        local prediction = basePred
+        
+        if isActuallyMoving and speed > 3 then
+            prediction = prediction + speedFactor * 0.045
+        end
+        
+        prediction = prediction + distFactor * 0.025
+        prediction = prediction + accelFactor * 0.015
+
+        -- ADAPTIVE LEARNING
+        prediction = self.prevPrediction + (prediction - self.prevPrediction) * learnRate
+
+        -- SMOOTHING
+        prediction = self.prevPrediction + (prediction - self.prevPrediction) * smoothRate
+        self.prevPrediction = prediction
+
+        return math.clamp(prediction, 0.05, 0.15)
+    end,
+    
+    GetPredictedPosition = function(self, pos, vel, distance, isActuallyMoving)
+        local pred = self:Calculate(pos, vel, distance, isActuallyMoving)
+        return pos + vel * pred, pred
+    end
+}
+
+-- =========================
+-- Cache สำหรับประสิทธิภาพ
+-- =========================
+local cachedTarget = nil
+local lastTargetUpdate = 0
+local cachedPlayers = {}
+-- =========================
+-- Drawing Objects สำหรับ Visuals
+-- =========================
+local tracerLine = Drawing.new("Line")
+tracerLine.Color = Color3.fromRGB(255, 50, 50)
+tracerLine.Thickness = 2
+tracerLine.Visible = false
+tracerLine.ZIndex = 1
+
+local crosshair = Drawing.new("Circle")
+crosshair.Color = Color3.fromRGB(255, 0, 0)
+crosshair.Thickness = 2
+crosshair.Radius = 6
+crosshair.Filled = false
+crosshair.Visible = false
+crosshair.ZIndex = 2
+
+local infoText = Drawing.new("Text")
+infoText.Color = Color3.fromRGB(255, 255, 255)
+infoText.Size = 13
+infoText.Outline = true
+infoText.Visible = false
+infoText.ZIndex = 3
+
+local targetTypeText = Drawing.new("Text")
+targetTypeText.Color = Color3.fromRGB(0, 255, 255)
+targetTypeText.Size = 15
+targetTypeText.Outline = true
+targetTypeText.Visible = false
+targetTypeText.ZIndex = 3
+
+-- =========================
+-- ฟังก์ชันช่วยเหลือ
+-- =========================
+local function IsValidTarget(player)
+    if player == LocalPlayer then return false end
+    if not player.Character then return false end
+    
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    
+    if TargetLockType == "Head" then
+        local head = player.Character:FindFirstChild("Head")
+        if not head then return false end
+    else -- Humanoid
+        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return false end
+    end
+    
+    return true
+end
+
+local function UpdatePlayerCache()
+    cachedPlayers = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if IsValidTarget(player) then
+            table.insert(cachedPlayers, player)
+        end
+    end
+    return cachedPlayers
+end
+
+-- หาเป้าหมายด้วย FOV
+local function GetClosestTarget(forceUpdate)
+    local currentTime = tick()
+    
+    if forceUpdate or currentTime - lastTargetUpdate > 0.05 then
+        UpdatePlayerCache()
+        lastTargetUpdate = currentTime
+        cachedTarget = nil
+    end
+    
+    if cachedTarget and IsValidTarget(cachedTarget) then
+        return cachedTarget
+    end
+    
+    local closest = nil
+    local shortestDistance = FOVRadius
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
+    for _, player in ipairs(cachedPlayers) do
+        if player ~= LocalPlayer and player.Character then
+            local targetPart = nil
+            
+            if TargetLockType == "Head" then
+                targetPart = player.Character:FindFirstChild("Head")
+            else
+                targetPart = player.Character:FindFirstChild("HumanoidRootPart")
+            end
+            
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            
+            if targetPart and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen then
+                    local screenVector = Vector2.new(screenPos.X, screenPos.Y)
+                    local distanceFromCenter = (screenVector - center).Magnitude
+                    
+                    if distanceFromCenter <= FOVRadius then
+                        if distanceFromCenter < shortestDistance then
+                            shortestDistance = distanceFromCenter
+                            closest = player
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    cachedTarget = closest
+    return closest
+end
+
+-- รับตำแหน่งล็อกตามประเภท
+local function GetTargetLockPosition(targetCharacter)
+    if not targetCharacter then return nil end
+    
+    if TargetLockType == "Head" then
+        local head = targetCharacter:FindFirstChild("Head")
+        if head then
+            return head.Position, head
+        end
+    else -- Humanoid
+        local hrp = targetCharacter:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            -- เล็งที่กลางตัว (HRP + offset)
+            local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+            local offset = Vector3.new(0, 1.5, 0) -- ประมาณกลางตัว
+            return hrp.Position + offset, hrp
+        end
+    end
+    
+    return nil
+end
+
+-- ตรวจสอบอาวุธ
+local function IsHoldingAllowedGun()
+    if not LocalPlayer.Character then return false end
+    
+    for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+        if (child:IsA("Tool") or child:IsA("Model")) and GunLookup[child.Name:lower()] then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- ตรวจสอบว่าอยู่หลังกำแพงหรือไม่
+local function isBehindWall(startPos, endPos)
+    if not startPos or not endPos then
+        return false
+    end
+    local ray = Ray.new(startPos, (endPos - startPos).Unit * (endPos - startPos).Magnitude)
+    local ignoreList = {LocalPlayer.Character}
+    if CurrentTarget and CurrentTarget.Character then
+        table.insert(ignoreList, CurrentTarget.Character)
+    end
+    local hit, position = Workspace:FindPartOnRayWithIgnoreList(ray, ignoreList)
+    return hit ~= nil
+end
+-- =========================
+-- Hook FireServer
+-- =========================
+local send = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Send")
+local oldFire
+
+oldFire = hookfunction(send.FireServer, function(self, ...)
+    local args = {...}
+    
+    if (SilentAimEnabled or GoodGunEnabled) and IsHoldingAllowedGun() then
+        local target = GetClosestTarget()
+        if target and target.Character then
+            local lockPosition, lockPart = GetTargetLockPosition(target.Character)
+            local humanoidRootPart = target.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+            
+            if lockPosition and humanoidRootPart and humanoid and humanoid.Health > 0 then
+                local distance = (lockPosition - Camera.CFrame.Position).Magnitude
+                local isActuallyMoving = AutoPrediction:IsActuallyMoving(humanoidRootPart)
+                local aimPos, predictionUsed = AutoPrediction:GetPredictedPosition(
+                    lockPosition,
+                    humanoidRootPart.Velocity,
+                    distance,
+                    isActuallyMoving
+                )
+                
+                -- ตรวจสอบว่าเป้าหมายอยู่หลังกำแพงหรือไม่
+                local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+                local isTargetBehindWall = false
+                
+                if myHead then
+                    isTargetBehindWall = isBehindWall(myHead.Position, aimPos)
+                end
+                
+                -- ระบบฉลาด: ถ้าอยู่หลังกำแพงและเปิด GoodGun ให้ยิงทะลุ
+                if GoodGunEnabled and isTargetBehindWall then
+                    -- โหมดยิงทะลุกำแพง
+                    args[4] = CFrame.new(math.huge, math.huge, math.huge)
+                    args[5] = {
+                        [1] = {
+                            [1] = {
+                                ["Instance"] = lockPart,
+                                ["Normal"] = Vector3.new(0, 1, 0),
+                                ["Position"] = aimPos
+                            }
+                        }
+                    }
+                    
+                    -- เอฟเฟกต์กระสุนทะลุกำแพง
+                    spawn(function()
+                        if myHead then
+                            local part = Instance.new("Part")
+                            part.Anchored = true
+                            part.CanCollide = false
+                            part.Size = Vector3.new(0.15, 0.15, (aimPos - myHead.Position).Magnitude)
+                            part.CFrame = CFrame.new(myHead.Position, aimPos) * CFrame.new(0, 0, -part.Size.Z / 2)
+                            part.Material = Enum.Material.Neon
+                            part.Transparency = 0.25
+                            part.Color = Color3.fromRGB(0, 255, 0) -- เขียว = ทะลุกำแพง
+                            part.Parent = Workspace
+                            Debris:AddItem(part, 4)
+                        end
+                    end)
+                else
+                    -- โหมดยิงปกติ
+                    args[4] = CFrame.new(LocalPlayer.Character.Head.Position, aimPos)
+                    args[5] = {
+                        [1] = {
+                            [1] = {
+                                ["Instance"] = lockPart,
+                                ["Normal"] = Vector3.new(0, 1, 0),
+                                ["Position"] = aimPos
+                            }
+                        }
+                    }
+                    
+                    -- เอฟเฟกต์กระสุนปกติ
+                    spawn(function()
+                        if myHead then
+                            local part = Instance.new("Part")
+                            part.Anchored = true
+                            part.CanCollide = false
+                            part.Size = Vector3.new(0.15, 0.15, (aimPos - myHead.Position).Magnitude)
+                            part.CFrame = CFrame.new(myHead.Position, aimPos) * CFrame.new(0, 0, -part.Size.Z / 2)
+                            part.Material = Enum.Material.Neon
+                            part.Transparency = 0.25
+                            part.Color = Color3.fromRGB(255, 50, 50) -- แดง = ปกติ
+                            part.Parent = Workspace
+                            Debris:AddItem(part, 4)
+                        end
+                    end)
+                end
+                
+                -- แสดงข้อมูลการยิง
+                print(string.format("[Silent Aim] Target: %s | Type: %s | Distance: %.1f | Prediction: %.3f | Wallbang: %s", 
+                    target.Name, TargetLockType, distance, predictionUsed, 
+                    (GoodGunEnabled and isTargetBehindWall) and "YES" or "NO"))
+            end
+        end
+    end
+    
+    return oldFire(self, unpack(args))
+end)
+-- =========================
+-- Update Visuals
+-- =========================
+RunService.RenderStepped:Connect(function()
+    if not SilentAimEnabled and not GoodGunEnabled then
+        tracerLine.Visible = false
+        crosshair.Visible = false
+        infoText.Visible = false
+        targetTypeText.Visible = false
+        return
+    end
+    
+    local target = GetClosestTarget()
+    CurrentTarget = target
+    
+    if target and target.Character then
+        local lockPosition, lockPart = GetTargetLockPosition(target.Character)
+        local humanoidRootPart = target.Character:FindFirstChild("HumanoidRootPart")
+        
+        if lockPosition and humanoidRootPart then
+            local distance = (lockPosition - Camera.CFrame.Position).Magnitude
+            local isActuallyMoving = AutoPrediction:IsActuallyMoving(humanoidRootPart)
+            local predictedPos, predictionUsed = AutoPrediction:GetPredictedPosition(
+                lockPosition,
+                humanoidRootPart.Velocity,
+                distance,
+                isActuallyMoving
+            )
+            
+            local screenPos, onScreen = Camera:WorldToViewportPoint(predictedPos)
+            local horizontalVelocity = AutoPrediction:GetHorizontalVelocity(humanoidRootPart.Velocity)
+            local targetSpeed = horizontalVelocity.Magnitude
+            
+            if onScreen then
+                -- Update Tracer Line
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
+                    local ourHead = LocalPlayer.Character.Head
+                    local screenStart = Camera:WorldToViewportPoint(ourHead.Position)
+                    tracerLine.From = Vector2.new(screenStart.X, screenStart.Y)
+                    tracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
+                    
+                    -- เปลี่ยนสีตามโหมด
+                    if GoodGunEnabled then
+                        local isTargetBehindWall = isBehindWall(ourHead.Position, predictedPos)
+                        tracerLine.Color = isTargetBehindWall and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
+                    else
+                        tracerLine.Color = Color3.fromRGB(255, 50, 50)
+                    end
+                    
+                    tracerLine.Visible = true
+                end
+                
+                -- Update Crosshair
+                crosshair.Position = Vector2.new(screenPos.X, screenPos.Y)
+                
+                -- เปลี่ยนสี Crosshair ตามสถานะการเคลื่อนที่
+                if isActuallyMoving then
+                    crosshair.Color = Color3.fromRGB(0, 255, 0)  -- เขียว = เคลื่อนที่
+                else
+                    crosshair.Color = Color3.fromRGB(255, 50, 50) -- แดง = ไม่เคลื่อนที่
+                end
+                crosshair.Visible = true
+                
+                -- Update Info Text
+                local movingStatus = isActuallyMoving and "MOVING" or "STATIONARY"
+                local wallbangStatus = ""
+                
+                if GoodGunEnabled then
+                    local isTargetBehindWall = isBehindWall(LocalPlayer.Character.Head.Position, predictedPos)
+                    wallbangStatus = isTargetBehindWall and " | WALLBANG" or ""
+                end
+                
+                infoText.Text = string.format("%s\nDist: %.1f | Speed: %.1f\nPred: %.3f | %s%s", 
+                    target.Name, distance, targetSpeed, predictionUsed, movingStatus, wallbangStatus)
+                infoText.Position = Vector2.new(screenPos.X + 15, screenPos.Y + 15)
+                infoText.Visible = true
+                
+                -- Update Target Type Text
+                targetTypeText.Text = string.format("Lock: %s", TargetLockType)
+                targetTypeText.Position = Vector2.new(screenPos.X + 15, screenPos.Y + 50)
+                targetTypeText.Color = (TargetLockType == "Head") and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 100, 255)
+                targetTypeText.Visible = true
+            else
+                tracerLine.Visible = false
+                crosshair.Visible = false
+                infoText.Visible = false
+                targetTypeText.Visible = false
+            end
+        else
+            tracerLine.Visible = false
+            crosshair.Visible = false
+            infoText.Visible = false
+            targetTypeText.Visible = false
+        end
+    else
+        tracerLine.Visible = false
+        crosshair.Visible = false
+        infoText.Visible = false
+        targetTypeText.Visible = false
+    end
+end)
+
+-- =========================
+-- สร้าง FOV Circle (Desktop/Mobile)
+-- =========================
+if not isMobile then
+    SilentFOVCircle = Drawing.new("Circle")
+    SilentFOVCircle.Color = Color3.fromRGB(255, 255, 255)
+    SilentFOVCircle.Thickness = 2
+    SilentFOVCircle.NumSides = 64
+    SilentFOVCircle.Filled = false
+    SilentFOVCircle.Transparency = 0.8
+    SilentFOVCircle.Visible = false
+else
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "MobileFOV"
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    
+    SilentFOVCircle = Instance.new("Frame")
+    SilentFOVCircle.Size = UDim2.fromOffset(FOVRadius * 2, FOVRadius * 2)
+    SilentFOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+    SilentFOVCircle.Position = UDim2.fromScale(0.5, 0.5)
+    SilentFOVCircle.BackgroundTransparency = 1
+    
+    local circleUI = Instance.new("UICorner")
+    circleUI.CornerRadius = UDim.new(1, 0)
+    circleUI.Parent = SilentFOVCircle
+    
+    local border = Instance.new("UIStroke")
+    border.Color = Color3.fromRGB(255, 255, 255)
+    border.Thickness = 2
+    border.Transparency = 0.2
+    border.Parent = SilentFOVCircle
+    SilentFOVCircle.Parent = ScreenGui
+end
+
+-- อัปเดต FOV Circle
+RunService.RenderStepped:Connect(function()
+    if SilentFOVCircle then
+        SilentFOVCircle.Visible = SilentAimEnabled or GoodGunEnabled
+        if isMobile then
+            SilentFOVCircle.Position = UDim2.fromScale(0.5, 0.5)
+            SilentFOVCircle.Size = UDim2.fromOffset(FOVRadius * 2, FOVRadius * 2)
+        else
+            SilentFOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            SilentFOVCircle.Radius = FOVRadius
+        end
+    end
+end)
+-- =========================
+-- Config Management
+-- =========================
+local ConfigManager = Window.ConfigManager
+local myConfig = ConfigManager:CreateConfig("EnhancedSilentAim")
+
+-- =========================
+-- Main Tab
+-- =========================
+local MainTab = Window:Tab({Title = "Main", Icon = "crosshair"})
+
+-- Section 1: เปิด/ปิดหลัก
+MainTab:Section({Title = "Activation"})
+
+local silentAimToggle = MainTab:Toggle({
+    Title = "Enable Silent Aim",
+    Desc = "เปิด/ปิด Silent Aim พื้นฐาน",
+    Value = false,
+    Callback = function(v)
+        SilentAimEnabled = v
+        tracerLine.Visible = v or GoodGunEnabled
+        crosshair.Visible = v or GoodGunEnabled
+        infoText.Visible = v or GoodGunEnabled
+        targetTypeText.Visible = v or GoodGunEnabled
+        if SilentFOVCircle then
+            SilentFOVCircle.Visible = v or GoodGunEnabled
+        end
+        
+        if v and GoodGunEnabled then
+            GoodGunEnabled = false
+        end
+        print("Silent Aim: " .. (v and "ENABLED" or "DISABLED"))
+    end
+})
+
+local goodGunToggle = MainTab:Toggle({
+    Title = "Enable Wallbang",
+    Desc = "เปิด/ปิดโหมดยิงทะลุกำแพง (GoodGun)",
+    Value = false,
+    Callback = function(v)
+        GoodGunEnabled = v
+        tracerLine.Visible = v or SilentAimEnabled
+        crosshair.Visible = v or SilentAimEnabled
+        infoText.Visible = v or SilentAimEnabled
+        targetTypeText.Visible = v or SilentAimEnabled
+        if SilentFOVCircle then
+            SilentFOVCircle.Visible = v or SilentAimEnabled
+        end
+        
+        if v and SilentAimEnabled then
+            SilentAimEnabled = false
+            silentAimToggle:Set(false)
+        end
+        print("Wallbang Mode: " .. (v and "ENABLED" or "DISABLED"))
+    end
+})
+
+-- Section 2: Target Selection
+MainTab:Section({Title = "Target Lock Type"})
+
+-- สร้าง radio button group
+local targetTypeGroup = {}
+
+local headLockToggle = MainTab:Toggle({
+    Title = "Lock to Head",
+    Desc = "ล็อกเป้าหมายที่ศีรษะ (แม่นยำสูง)",
+    Value = TargetLockType == "Head",
+    Callback = function(v)
+        if v then
+            TargetLockType = "Head"
+            if targetTypeGroup["Body"] then
+                targetTypeGroup["Body"]:Set(false)
+            end
+            print("Target lock set to: HEAD")
+        end
+    end
+})
+targetTypeGroup["Head"] = headLockToggle
+
+local bodyLockToggle = MainTab:Toggle({
+    Title = "Lock to Body",
+    Desc = "ล็อกเป้าหมายที่ลำตัว (เสถียรกว่า)",
+    Value = TargetLockType == "Humanoid",
+    Callback = function(v)
+        if v then
+            TargetLockType = "Humanoid"
+            if targetTypeGroup["Head"] then
+                targetTypeGroup["Head"]:Set(false)
+            end
+            print("Target lock set to: BODY")
+        end
+    end
+})
+targetTypeGroup["Body"] = bodyLockToggle
+
+-- Section 3: FOV Settings
+MainTab:Section({Title = "Aiming Settings"})
+
+MainTab:Slider({
+    Title = "FOV Radius",
+    Desc = "ปรับขนาดเขตการตรวจจับเป้าหมาย",
+    Step = 5,
+    Value = {
+        Min = 50,
+        Max = 500,
+        Default = FOVRadius
+    },
+    Callback = function(value)
+        FOVRadius = tonumber(value) or 120
+        if SilentFOVCircle then
+            if isMobile then
+                SilentFOVCircle.Size = UDim2.fromOffset(FOVRadius * 2, FOVRadius * 2)
+            else
+                SilentFOVCircle.Radius = FOVRadius
+            end
+        end
+        print("FOV Radius set to: " .. FOVRadius)
+    end
+})
+-- =========================
+-- Prediction Tab
+-- =========================
+local PredictionTab = Window:Tab({Title = "Prediction", Icon = "settings"})
+
+PredictionTab:Section({Title = "Prediction Settings"})
+
+PredictionTab:Slider({
+    Title = "Base Prediction",
+    Desc = "ค่าเริ่มต้นเมื่อไม่เคลื่อนที่",
+    Step = 0.001,
+    Value = {
+        Min = 0.05,
+        Max = 0.15,
+        Default = 0.085
+    },
+    Callback = function(v)
+        AutoPrediction.prevPrediction = v
+        print("Base Prediction: " .. v)
+    end
+})
+
+PredictionTab:Slider({
+    Title = "Speed Threshold",
+    Desc = "ความเร็วต่ำสุดที่ถือว่าเคลื่อนที่",
+    Step = 0.1,
+    Value = {
+        Min = 1,
+        Max = 10,
+        Default = 2
+    },
+    Callback = function(v)
+        AutoPrediction.minMoveSpeed = v
+        print("Speed Threshold: " .. v)
+    end
+})
+
+PredictionTab:Toggle({
+    Title = "Horizontal Velocity Only",
+    Desc = "ใช้เฉพาะความเร็วแนวนอน (ป้องกันการหมุน)",
+    Value = true,
+    Callback = function(v)
+        AutoPrediction.useHorizontalOnly = v
+        print("Horizontal Only: " .. (v and "YES" or "NO"))
+    end
+})
+
+PredictionTab:Toggle({
+    Title = "Check Move Direction",
+    Desc = "ตรวจสอบทิศทางการเคลื่อนที่จาก Humanoid",
+    Value = true,
+    Callback = function(v)
+        AutoPrediction.checkMoveDirection = v
+        print("Check Move Direction: " .. (v and "YES" or "NO"))
+    end
+})
+
+PredictionTab:Button({
+    Title = "Reset Prediction",
+    Desc = "รีเซ็ตระบบ prediction ทั้งหมด",
+    Callback = function()
+        AutoPrediction.prevPrediction = 0.085
+        AutoPrediction.prevHorizontalVelocity = Vector3.new(0, 0, 0)
+        print("✅ Prediction system reset!")
+    end
+})
+
+-- =========================
+-- Visual Tab
+-- =========================
+local VisualTab = Window:Tab({Title = "Visual", Icon = "eye"})
+
+VisualTab:Section({Title = "Visual Settings"})
+
+local showTracerToggle = VisualTab:Toggle({
+    Title = "Show Tracer Line",
+    Desc = "แสดงเส้นเชื่อมระหว่างคุณและเป้าหมาย",
+    Value = true,
+    Callback = function(v)
+        tracerLine.Visible = v and (SilentAimEnabled or GoodGunEnabled)
+        print("Tracer Line: " .. (v and "SHOWN" or "HIDDEN"))
+    end
+})
+
+local showCrosshairToggle = VisualTab:Toggle({
+    Title = "Show Crosshair",
+    Desc = "แสดงจุดเล็งบนเป้าหมาย",
+    Value = true,
+    Callback = function(v)
+        crosshair.Visible = v and (SilentAimEnabled or GoodGunEnabled)
+        print("Crosshair: " .. (v and "SHOWN" or "HIDDEN"))
+    end
+})
+
+local showInfoToggle = VisualTab:Toggle({
+    Title = "Show Info Text",
+    Desc = "แสดงข้อมูลเป้าหมาย",
+    Value = true,
+    Callback = function(v)
+        infoText.Visible = v and (SilentAimEnabled or GoodGunEnabled)
+        targetTypeText.Visible = v and (SilentAimEnabled or GoodGunEnabled)
+        print("Info Text: " .. (v and "SHOWN" or "HIDDEN"))
+    end
+})
+
+local showFOVToggle = VisualTab:Toggle({
+    Title = "Show FOV Circle",
+    Desc = "แสดงวงกลมเขตตรวจจับ",
+    Value = true,
+    Callback = function(v)
+        if SilentFOVCircle then
+            SilentFOVCircle.Visible = v and (SilentAimEnabled or GoodGunEnabled)
+        end
+        print("FOV Circle: " .. (v and "SHOWN" or "HIDDEN"))
+    end
+})
+
+VisualTab:Button({
+    Title = "Toggle All Visuals",
+    Desc = "เปิด/ปิดเอฟเฟกต์ภาพทั้งหมด",
+    Callback = function()
+        local currentState = showTracerToggle.Value
+        local newState = not currentState
+        
+        showTracerToggle:Set(newState)
+        showCrosshairToggle:Set(newState)
+        showInfoToggle:Set(newState)
+        showFOVToggle:Set(newState)
+        
+        print("All visuals: " .. (newState and "ENABLED" or "DISABLED"))
+    end
+})
+
+-- =========================
+-- Weapons Tab (แบบง่าย)
+-- =========================
+local WeaponsTab = Window:Tab({Title = "Weapons", Icon = "gun"})
+
+WeaponsTab:Section({Title = "Weapon Management"})
+
+local weaponSelection = {}
+local function updateWeaponSelection()
+    local selectedCount = 0
+    for _, enabled in pairs(weaponSelection) do
+        if enabled then selectedCount = selectedCount + 1 end
+    end
+    
+    WeaponsTab:Section({Title = string.format("Selected: %d/%d Weapons", selectedCount, #GunNames)})
+end
+
+-- สร้าง toggle สำหรับอาวุธบางส่วน
+local popularWeapons = {
+    "AK47", "M4A1", "AWM", "Desert Eagle", "MP5", "Shotgun", "Vector"
+}
+
+for _, weaponName in ipairs(popularWeapons) do
+    WeaponsTab:Toggle({
+        Title = weaponName,
+        Desc = "อนุญาต Silent Aim สำหรับ " .. weaponName,
+        Value = true,
+        Callback = function(v)
+            weaponSelection[weaponName] = v
+            GunLookup[weaponName:lower()] = v
+            updateWeaponSelection()
+            print(weaponName .. ": " .. (v and "ENABLED" or "DISABLED"))
+        end
+    })
+end
+
+WeaponsTab:Button({
+    Title = "Enable Popular Weapons",
+    Desc = "เปิดใช้งานสำหรับอาวุธยอดนิยมทั้งหมด",
+    Callback = function()
+        for _, weaponName in ipairs(popularWeapons) do
+            weaponSelection[weaponName] = true
+            GunLookup[weaponName:lower()] = true
+        end
+        updateWeaponSelection()
+        print("✅ All popular weapons enabled")
+    end
+})
+
+-- =========================
+-- Config Tab
+-- =========================
+local ConfigTab = Window:Tab({Title = "Config", Icon = "save"})
+
+ConfigTab:Section({Title = "Configuration Management"})
+
+ConfigTab:Button({
+    Title = "💾 Save Config",
+    Desc = "บันทึกการตั้งค่าปัจจุบัน",
+    Callback = function()
+        myConfig:Save()
+        print("✅ Configuration saved!")
+    end
+})
+
+ConfigTab:Button({
+    Title = "📂 Load Config",
+    Desc = "โหลดการตั้งค่าที่บันทึกไว้",
+    Callback = function()
+        myConfig:Load()
+        print("✅ Configuration loaded!")
+    end
+})
+
+ConfigTab:Button({
+    Title = "🔄 Reset Config",
+    Desc = "รีเซ็ตการตั้งค่าทั้งหมด",
+    Callback = function()
+        myConfig:Delete()
+        print("✅ Configuration reset!")
+    end
+})
+
+ConfigTab:Section({Title = "System Info"})
+
+ConfigTab:Button({
+    Title = "📊 Show Status",
+    Desc = "แสดงสถานะระบบปัจจุบัน",
+    Callback = function()
+        print("=== SYSTEM STATUS ===")
+        print("Silent Aim: " .. (SilentAimEnabled and "ENABLED" or "DISABLED"))
+        print("Wallbang Mode: " .. (GoodGunEnabled and "ENABLED" or "DISABLED"))
+        print("Target Lock: " .. TargetLockType)
+        print("FOV Radius: " .. FOVRadius)
+        print("Base Prediction: " .. AutoPrediction.prevPrediction)
+        print("=====================")
+    end
+})
+
+-- =========================
+-- Info Tab
+-- =========================
+local InfoTab = Window:Tab({Title = "Info", Icon = "info"})
+
+InfoTab:Section({Title = "About"})
+
+InfoTab:Label({
+    Title = "Advanced Silent Aim System",
+    Desc = "Version 2.0 | Enhanced with Target Selection"
+})
+
+InfoTab:Label({
+    Title = "Features",
+    Desc = "• Head/Body Target Selection\n• Advanced Prediction System\n• Wallbang Mode\n• FOV-based Targeting\n• Weapon Filtering\n• Real-time Visuals"
+})
+
+InfoTab:Label({
+    Title = "Controls",
+    Desc = "• G: Toggle UI\n• Left Click: Select target\n• Right Click: Manual override"
+})
+
+InfoTab:Button({
+    Title = "📚 Documentation",
+    Desc = "แสดงวิธีใช้งานทั้งหมด",
+    Callback = function()
+        print("=== DOCUMENTATION ===")
+        print("1. Main Tab: เปิด/ปิดระบบและเลือกประเภทการล็อก")
+        print("2. Prediction Tab: ปรับแต่งการคำนวณการเล็ง")
+        print("3. Visual Tab: ควบคุมเอฟเฟกต์ภาพ")
+        print("4. Weapons Tab: กรองอาวุธที่อนุญาต")
+        print("5. Config Tab: บันทึก/โหลดการตั้งค่า")
+        print("=====================")
+    end
+})
+
+-- =========================
+-- Final Initialization
+-- =========================
+-- ตั้งค่าเริ่มต้นสำหรับกลุ่ม radio button
+if TargetLockType == "Head" then
+    headLockToggle:Set(true)
+    bodyLockToggle:Set(false)
+else
+    headLockToggle:Set(false)
+    bodyLockToggle:Set(true)
+end
+
+-- บันทึก callback functions ไปยัง config
+myConfig:Register("SilentAimEnabled", function(v) 
+    SilentAimEnabled = v 
+    silentAimToggle:Set(v)
+end)
+
+myConfig:Register("GoodGunEnabled", function(v) 
+    GoodGunEnabled = v 
+    goodGunToggle:Set(v)
+end)
+
+myConfig:Register("TargetLockType", function(v) 
+    TargetLockType = v 
+    if v == "Head" then
+        headLockToggle:Set(true)
+        bodyLockToggle:Set(false)
+    else
+        headLockToggle:Set(false)
+        bodyLockToggle:Set(true)
+    end
+end)
+
+myConfig:Register("FOVRadius", function(v) 
+    FOVRadius = v 
+end)
+
+-- Load saved configuration
+task.wait(1)
+myConfig:Load()
+
+-- Print initialization message
+print("=== Advanced Silent Aim System ===")
+print("✅ System Initialized Successfully!")
+print("Target Lock Type: " .. TargetLockType)
+print("FOV Radius: " .. FOVRadius)
+print("Press 'G' to open/close UI")
+print("================================")
+
+-- Mobile notification
+if isMobile then
+    print("📱 Mobile Mode: UI optimized for touch controls")
+end
