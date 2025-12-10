@@ -109,6 +109,35 @@ local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local HttpService = game:GetService("HttpService")
 
+-- Silent aim ----
+local SilentAimEnabled = false
+local ShowFOV = true
+local FOV = 120
+local SilentFOVCircle
+local tracerLine, targetDot
+
+   -- ESP --
+local espEnabled = false
+local boxESPEnabled = false
+local nameESPEnabled = false
+local distanceESPEnabled = false
+local highlightEnabled = false
+
+local espPlayers = {}
+local highlights = {}
+
+
+
+
+
+
+
+
+
+
+
+
+
 -- =========================
 -- Local Variables
 -- =========================
@@ -139,12 +168,6 @@ local Window = WindUI:CreateWindow({
 
 local ConfigManager = Window.ConfigManager
 local myConfig = ConfigManager:CreateConfig("SilentAimConfig")
-
-local SilentAimEnabled = false
-local ShowFOV = true
-local FOV = 120
-local SilentFOVCircle
-local tracerLine, targetDot
 
 local function isPlayerExcluded(playerName)
     local lowerPlayerName = string.lower(playerName)
@@ -541,635 +564,260 @@ local FriendsInput = Tab:Input({
 })
 myConfig:Register("FriendsList", FriendsInput)
 
-Players.PlayerAdded:Connect(UpdateExcludedHighlights)
-Players.PlayerRemoving:Connect(function(player)
-    if excludedPlayersUI[player] then
-        excludedPlayersUI[player]:Destroy()
-        excludedPlayersUI[player] = nil
-    end
-end)
-
-
--- =========================
--- COMPLETE ESP SYSTEM
+        -- =========================
+-- ESP FUNCTIONS
 -- =========================
 
--- Global ESP Variables
-local espPlayers = {}
-local boxESPEnabled = false
-local nameESPEnabled = false
-local distanceESPEnabled = false
-local highlightEnabled = false
-local highlights = {}
-local espEnabled = false -- Master toggle for Player ESP
+-- Settings
 
--- Items ESP Variables
-local RARITY_COLORS = {
-    ["Common"] = Color3.fromRGB(200, 200, 200),
-    ["Uncommon"] = Color3.fromRGB(86, 176, 62),
-    ["Rare"] = Color3.fromRGB(0, 162, 255),
-    ["Epic"] = Color3.fromRGB(170, 85, 255),
-    ["Legendary"] = Color3.fromRGB(255, 170, 0),
-    ["Omega"] = Color3.fromRGB(255, 75, 75)
-}
-local WeaponDB = {}
-local BillboardCache = {}
-local ItemsESPEnabled = false
-local ESPConnection = nil
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
--- =========================
--- PLAYER ESP FUNCTIONS
--- =========================
-
+-- Player ESP Functions
 local function createESP(player)
-    if espPlayers[player] or player == LocalPlayer then
-        return
-    end
-    
+    if espPlayers[player] or player == LocalPlayer then return end
+
     local lines = {}
-    for i = 1, 12 do
+    for i=1,12 do
         local line = Drawing.new("Line")
-        line.Color = Color3.new(1, 1, 1)
+        line.Color = Color3.new(1,1,1)
         line.Thickness = 2
         line.Visible = false
-        line.From = Vector2.new(0, 0)
-        line.To = Vector2.new(0, 0)
         lines[i] = line
     end
-    
+
     local nameText = Drawing.new("Text")
     nameText.Size = 16
     nameText.Center = true
     nameText.Outline = true
-    nameText.Color = Color3.fromRGB(255, 255, 255)
+    nameText.Color = Color3.fromRGB(255,255,255)
     nameText.Font = 2
-    
+
     local distanceText = Drawing.new("Text")
     distanceText.Size = 14
     distanceText.Center = true
     distanceText.Outline = true
-    distanceText.Color = Color3.fromRGB(255, 255, 255)
-    
+    distanceText.Color = Color3.fromRGB(255,255,255)
+
     local highlight = Instance.new("Highlight")
-    highlight.FillColor = Color3.fromRGB(255, 0, 255)
-    highlight.OutlineColor = Color3.fromRGB(255, 0, 255)
+    highlight.FillColor = Color3.fromRGB(255,0,255)
+    highlight.OutlineColor = Color3.fromRGB(255,0,255)
     highlight.FillTransparency = 1
     highlight.OutlineTransparency = 0
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     highlight.Enabled = false
     pcall(function() highlight.Parent = player.Character or Workspace end)
-    
-    local drawings = {nameText, distanceText, highlight}
-    for _, line in ipairs(lines) do
-        table.insert(drawings, line)
-    end
-    
-    local conn = RunService.RenderStepped:Connect(function()
-        if not espEnabled or not player or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-            for _, line in ipairs(lines) do
-                line.Visible = false
-            end
-            nameText.Visible = false
-            distanceText.Visible = false
-            highlight.Enabled = false
+
+    local conn
+    conn = RunService.RenderStepped:Connect(function()
+        if not espEnabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            for _, line in ipairs(lines) do line.Visible=false end
+            nameText.Visible=false
+            distanceText.Visible=false
+            highlight.Enabled=false
             return
         end
-        
-        if highlight and highlight.Parent and player.Character then
-            highlight.Adornee = player.Character
-        end
-        
+
+        if highlight and highlight.Parent then highlight.Adornee = player.Character end
+
         local hrp = player.Character.HumanoidRootPart
-        local dist = 0
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            dist = (hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-        end
-        
-        local thickness = dist > 0 and math.clamp(500 / math.max(dist, 1), 0.5, 2) or 2
+        local dist = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") 
+            and (hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude or 0
+
+        local thickness = dist>0 and math.clamp(500/math.max(dist,1),0.5,2) or 2
         local cf = player.Character:GetPivot()
-        local size = Vector3.new(3.5, 7, 2)
-        local halfSize = size / 2
-        
+        local size = Vector3.new(3.5,7,2)
+        local halfSize = size/2
+
         local corners = {
-            cf * Vector3.new(-halfSize.X, -halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(-halfSize.X, -halfSize.Y, halfSize.Z),
-            cf * Vector3.new(-halfSize.X, halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(-halfSize.X, halfSize.Y, halfSize.Z),
-            cf * Vector3.new(halfSize.X, -halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(halfSize.X, -halfSize.Y, halfSize.Z),
-            cf * Vector3.new(halfSize.X, halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(halfSize.X, halfSize.Y, halfSize.Z)
+            cf*Vector3.new(-halfSize.X,-halfSize.Y,-halfSize.Z),
+            cf*Vector3.new(-halfSize.X,-halfSize.Y,halfSize.Z),
+            cf*Vector3.new(-halfSize.X,halfSize.Y,-halfSize.Z),
+            cf*Vector3.new(-halfSize.X,halfSize.Y,halfSize.Z),
+            cf*Vector3.new(halfSize.X,-halfSize.Y,-halfSize.Z),
+            cf*Vector3.new(halfSize.X,-halfSize.Y,halfSize.Z),
+            cf*Vector3.new(halfSize.X,halfSize.Y,-halfSize.Z),
+            cf*Vector3.new(halfSize.X,halfSize.Y,halfSize.Z)
         }
-        
+
         local vp = {}
-        local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
-        local hasFront = false
-        
-        for i, world in ipairs(corners) do
-            local screenPos, onScreen = Camera:WorldToViewportPoint(world)
-            vp[i] = {pos = screenPos, on = onScreen}
-            if onScreen and screenPos.Z > 0 then
-                hasFront = true
-                minX = math.min(minX, screenPos.X)
-                maxX = math.max(maxX, screenPos.X)
-                minY = math.min(minY, screenPos.Y)
-                maxY = math.max(maxY, screenPos.Y)
+        local minX,maxX,minY,maxY = math.huge,-math.huge,math.huge,-math.huge
+        local hasFront=false
+
+        for i,world in ipairs(corners) do
+            local screenPos,onScreen = Camera:WorldToViewportPoint(world)
+            vp[i] = {pos=screenPos,on=onScreen}
+            if onScreen and screenPos.Z>0 then
+                hasFront=true
+                minX = math.min(minX,screenPos.X)
+                maxX = math.max(maxX,screenPos.X)
+                minY = math.min(minY,screenPos.Y)
+                maxY = math.max(maxY,screenPos.Y)
             end
         end
-        
+
         if not hasFront then
-            for _, line in ipairs(lines) do
-                line.Visible = false
-            end
-            nameText.Visible = false
-            distanceText.Visible = false
-            highlight.Enabled = false
+            for _, line in ipairs(lines) do line.Visible=false end
+            nameText.Visible=false
+            distanceText.Visible=false
+            highlight.Enabled=false
             return
         end
-        
-        local width = maxX - minX
-        local height = maxY - minY
-        local centerX = (minX + maxX) / 2
-        
+
+        local centerX = (minX+maxX)/2
+
         if boxESPEnabled then
-            local edges = {
-                {1, 2}, {1, 3}, {1, 5}, {2, 4},
-                {2, 6}, {3, 4}, {3, 7}, {4, 8},
-                {5, 6}, {5, 7}, {6, 8}, {7, 8}
-            }
-            
-            for i, edge in ipairs(edges) do
-                local aIdx, bIdx = edge[1], edge[2]
-                local a, b = vp[aIdx], vp[bIdx]
-                if a and b and a.on and b.on and a.pos and b.pos then
-                    local ax, ay = a.pos.X, a.pos.Y
-                    local bx, by = b.pos.X, b.pos.Y
-                    if ax == ax and ay == ay and bx == bx and by == by then
-                        lines[i].From = Vector2.new(ax, ay)
-                        lines[i].To = Vector2.new(bx, by)
-                        lines[i].Thickness = thickness
-                        lines[i].Visible = true
-                    else
-                        lines[i].Visible = false
-                    end
+            local edges = {{1,2},{1,3},{1,5},{2,4},{2,6},{3,4},{3,7},{4,8},{5,6},{5,7},{6,8},{7,8}}
+            for i,edge in ipairs(edges) do
+                local a,b = vp[edge[1]],vp[edge[2]]
+                if a and b and a.on and b.on then
+                    lines[i].From = Vector2.new(a.pos.X,a.pos.Y)
+                    lines[i].To = Vector2.new(b.pos.X,b.pos.Y)
+                    lines[i].Thickness = thickness
+                    lines[i].Visible = true
                 else
                     lines[i].Visible = false
                 end
             end
         else
-            for _, line in ipairs(lines) do
-                line.Visible = false
-            end
+            for _, line in ipairs(lines) do line.Visible=false end
         end
-        
+
         nameText.Text = nameESPEnabled and player.Name or ""
-        nameText.Position = Vector2.new(centerX, minY - 16)
+        nameText.Position = Vector2.new(centerX,minY-16)
         nameText.Visible = nameESPEnabled
-        
-        distanceText.Text = distanceESPEnabled and string.format("%.0f studs", dist) or ""
-        distanceText.Position = Vector2.new(centerX, maxY + 4)
+
+        distanceText.Text = distanceESPEnabled and string.format("%.0f studs",dist) or ""
+        distanceText.Position = Vector2.new(centerX,maxY+4)
         distanceText.Visible = distanceESPEnabled
-        
+
         highlight.Enabled = highlightEnabled
     end)
-    
-    espPlayers[player] = {conn = conn, drawings = drawings}
+
+    espPlayers[player] = {conn=conn,lines=lines,nameText=nameText,distanceText=distanceText,highlight=highlight}
 end
 
 local function removeESP(player)
     if espPlayers[player] then
-        for _, obj in pairs(espPlayers[player].drawings) do
-            if obj and obj.Destroy then
-                pcall(function() obj:Destroy() end)
-            elseif typeof(obj) == "table" and obj.Visible ~= nil then
-                obj.Visible = false
-            end
+        for _, obj in pairs(espPlayers[player]) do
+            if obj and obj.Destroy then pcall(function() obj:Destroy() end)
+            elseif typeof(obj)=="table" and obj.Visible~=nil then obj.Visible=false end
         end
-        
-        if espPlayers[player].conn then
-            pcall(function() espPlayers[player].conn:Disconnect() end)
-        end
-        
-        espPlayers[player] = nil
+        if espPlayers[player].conn then pcall(function() espPlayers[player].conn:Disconnect() end) end
+        espPlayers[player]=nil
     end
 end
 
 local function loadESP()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and not espPlayers[player] then
-            createESP(player)
-        end
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and not espPlayers[p] then createESP(p) end
     end
 end
 
 local function clearAllESP()
-    for player, espData in pairs(espPlayers) do
-        removeESP(player)
-    end
-    espPlayers = {}
-    
-    for _, hl in pairs(highlights) do
-        if hl and hl.Destroy then
-            pcall(function() hl:Destroy() end)
-        end
-    end
-    highlights = {}
+    for p,_ in pairs(espPlayers) do removeESP(p) end
+    espPlayers={}
 end
 
+-- Highlight Update
 local function updateHighlights()
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            if not highlights[player] or not highlights[player].Parent then
-                local highlight = Instance.new("Highlight")
-                highlight.FillColor = Color3.fromRGB(200, 0, 255)
-                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                highlight.FillTransparency = 0.3
-                highlight.OutlineTransparency = 0
-                highlight.Parent = player.Character
-                highlight.Adornee = player.Character
-                highlight.Enabled = highlightEnabled
-                highlights[player] = highlight
+    for _,p in pairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character then
+            if not highlights[p] or not highlights[p].Parent then
+                local hl = Instance.new("Highlight")
+                hl.FillColor=Color3.fromRGB(200,0,255)
+                hl.OutlineColor=Color3.fromRGB(255,255,255)
+                hl.FillTransparency=0.3
+                hl.OutlineTransparency=0
+                hl.Parent=p.Character
+                hl.Adornee=p.Character
+                hl.Enabled=highlightEnabled
+                highlights[p]=hl
             else
-                highlights[player].Enabled = highlightEnabled
+                highlights[p].Enabled=highlightEnabled
             end
         end
     end
-    
-    for player, hl in pairs(highlights) do
-        if not player or not player.Parent or not player.Character then
-            if hl and hl.Destroy then
-                pcall(function() hl:Destroy() end)
-            end
-            highlights[player] = nil
-        end
-    end
 end
 
--- =========================
--- ITEMS ESP FUNCTIONS
--- =========================
-
-local function registerItems(folder)
-    for _, tool in ipairs(folder:GetChildren()) do
-        local handle = tool:FindFirstChild("Handle")
-        local key
-        if handle then
-            local mesh = handle:FindFirstChildOfClass("SpecialMesh")
-            if mesh then
-                key = mesh.MeshId .. (mesh.TextureId or "")
-            elseif handle:IsA("MeshPart") then
-                key = handle.MeshId .. (handle.TextureID or "")
-            end
-        end
-        if key then
-            WeaponDB[key] = {
-                Name = tool:GetAttribute("DisplayName") or tool.Name,
-                Rarity = tool:GetAttribute("RarityName") or "Common",
-                ImageId = tool:GetAttribute("ImageId") or "rbxassetid://7072725737"
-            }
-        else
-            WeaponDB[tool.Name] = {
-                Name = tool:GetAttribute("DisplayName") or tool.Name,
-                Rarity = tool:GetAttribute("RarityName") or "Common",
-                ImageId = tool:GetAttribute("ImageId") or "rbxassetid://7072725737"
-            }
-        end
-    end
-end
-
-local function getMeshId(tool)
-    local handle = tool:FindFirstChild("Handle")
-    if not handle then
-        return nil
-    end
-    local mesh = handle:FindFirstChildOfClass("SpecialMesh")
-    if mesh then
-        return mesh.MeshId .. (mesh.TextureId or "")
-    end
-    if handle:IsA("MeshPart") then
-        return handle.MeshId .. (handle.TextureID or "")
-    end
-    return nil
-end
-
-local function getWeaponInfo(tool)
-    local meshId = getMeshId(tool)
-    if meshId and WeaponDB[meshId] then
-        return WeaponDB[meshId]
-    elseif WeaponDB[tool.Name] then
-        return WeaponDB[tool.Name]
-    else
-        return nil
-    end
-end
-
-local function createBillboardForPlayer(player)
-    if not ItemsESPEnabled or player == LocalPlayer then
-        return
-    end
-    local char = player.Character
-    if not char then
-        return
-    end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then
-        return
-    end
-    if BillboardCache[player] then
-        BillboardCache[player]:Destroy()
-        BillboardCache[player] = nil
-    end
-    local billboard = Instance.new("BillboardGui")
-    billboard.Adornee = hrp
-    billboard.Size = UDim2.new(0, 90, 0, 20)
-    billboard.StudsOffset = Vector3.new(0, -5.0, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent = char
-    billboard:ClearAllChildren()
-    local layout = Instance.new("UIListLayout", billboard)
-    layout.FillDirection = Enum.FillDirection.Horizontal
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 5)
-    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    local tools = {}
-    for _, container in ipairs({"Backpack", "StarterGear", "StarterPack"}) do
-        local obj = player:FindFirstChild(container)
-        if obj then
-            for _, tool in ipairs(obj:GetChildren()) do
-                if tool:IsA("Tool") and tool.Name ~= "Fists" then
-                    table.insert(tools, tool)
-                end
-            end
-        end
-    end
-    if char then
-        for _, tool in ipairs(char:GetChildren()) do
-            if tool:IsA("Tool") and tool.Name ~= "Fists" then
-                table.insert(tools, tool)
-            end
-        end
-    end
-    for _, tool in ipairs(tools) do
-        local info = getWeaponInfo(tool)
-        if info then
-            local img = Instance.new("ImageLabel", billboard)
-            img.Size = UDim2.new(0, 20, 0, 20)
-            img.BackgroundTransparency = 0.1
-            img.Image = info.ImageId
-            img.BackgroundColor3 = Color3.fromRGB(240, 248, 255)
-            Instance.new("UICorner", img).CornerRadius = UDim.new(0, 10)
-            local border = Instance.new("UIStroke", img)
-            border.Color = RARITY_COLORS[info.Rarity] or Color3.new(1, 1, 1)
-            border.Thickness = 2
-        end
-    end
-    BillboardCache[player] = billboard
-end
-
-local function clearAllItemsESP()
-    for player, billboard in pairs(BillboardCache) do
-        if billboard then
-            billboard:Destroy()
-        end
-    end
-    BillboardCache = {}
-end
-
--- =========================
--- ESP CONNECTIONS
--- =========================
-
+-- Player Events
 Players.PlayerAdded:Connect(function(player)
-    if player ~= LocalPlayer then
-        player.CharacterAdded:Connect(function()
-            task.wait(0.1)
-            if espEnabled and not espPlayers[player] then
-                createESP(player)
-            end
-            if highlightEnabled then
-                updateHighlights()
-            end
-        end)
-        
-        if player.Character and not espPlayers[player] and espEnabled then
-            task.wait(0.1)
-            createESP(player)
-        end
-    end
+    player.CharacterAdded:Connect(function()
+        task.wait(0.1)
+        if espEnabled then createESP(player) end
+        if highlightEnabled then updateHighlights() end
+    end)
+    if player.Character and espEnabled then createESP(player) end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
     removeESP(player)
-    if highlights[player] then
-        pcall(function() highlights[player]:Destroy() end)
-        highlights[player] = nil
-    end
-end)
-
--- Items ESP connections
-Players.PlayerAdded:Connect(
-    function(player)
-        if ItemsESPEnabled then
-            player.CharacterAdded:Connect(
-                function()
-                    wait(0.2)
-                    createBillboardForPlayer(player)
-                end
-            )
-        end
-    end
-)
-
-Players.PlayerRemoving:Connect(
-    function(player)
-        if BillboardCache[player] then
-            BillboardCache[player]:Destroy()
-            BillboardCache[player] = nil
-        end
-    end
-)
-
--- =========================
--- ESP TAB UI
--- =========================
-
-local ESPTab = Window:Tab({
-   Title = "ESP",
-   Icon = "eye",
-})
-
--- Player ESP Master Toggle
-local PlayerESPToggle = ESPTab:Toggle({
-    Title = "Full ESP",
-    Desc = "เปิดทุกอย่าง",
-    Default = false,
-    Callback = function(state)
-        espEnabled = state
-        
-        if state then
-            loadESP()
-            
-            if WindUI then
-                WindUI:Notify({
-                    Title = "✅ Player ESP Enabled",
-                    Description = "Player ESP ถูกเปิดใช้งานแล้ว",
-                    Duration = 3
-                })
-            end
-        else
-            clearAllESP()
-            
-            if WindUI then
-                WindUI:Notify({
-                    Title = "❌ Player ESP Disabled",
-                    Description = "Player ESP ถูกปิดใช้งานแล้ว",
-                    Duration = 3
-                })
-            end
-        end
-    end
-})
-myConfig:Register("PlayerESP", PlayerESPToggle)
-
--- Individual ESP Toggles
-local BoxESPToggle = ESPTab:Toggle({
-    Title = "Box ESP",
-    Desc = "กล่อง4เหลี่ยม",
-    Default = false,
-    Callback = function(state)
-        boxESPEnabled = state
-    end
-})
-myConfig:Register("BoxESP", BoxESPToggle)
-
-local NameESPToggle = ESPTab:Toggle({
-    Title = "Name ESP",
-    Desc = "ดูชื่อ",
-    Default = false,
-    Callback = function(state)
-        nameESPEnabled = state
-    end
-})
-myConfig:Register("NameESP", NameESPToggle)
-
-local DistanceESPToggle = ESPTab:Toggle({
-    Title = "Distance ESP",
-    Desc = "ระยะห่าง",
-    Default = false,
-    Callback = function(state)
-        distanceESPEnabled = state
-    end
-})
-myConfig:Register("DistanceESP", DistanceESPToggle)
-
-local HighlightToggle = ESPTab:Toggle({
-    Title = "Highlight",
-    Desc = "ไฮไลท์ที่ตัวคนอื่น",
-    Default = false,
-    Callback = function(state)
-        highlightEnabled = state
-        
-        if state then
-            updateHighlights()
-        else
-            for _, hl in pairs(highlights) do
-                if hl and hl.Destroy then
-                    pcall(function() hl:Destroy() end)
-                end
-            end
-            highlights = {}
-        end
-    end
-})
-myConfig:Register("Highlight", HighlightToggle)
-
--- Items ESP Toggle
-local ItemsESPToggle = ESPTab:Toggle({
-    Title = "Inventory Esp",
-    Desc = "ดูของ",
-    Default = false,
-    Callback = function(state)
-        ItemsESPEnabled = state
-        if state then
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character then
-                    createBillboardForPlayer(p)
-                end
-            end
-            ESPConnection = RunService.Heartbeat:Connect(function()
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p ~= LocalPlayer and p.Character then
-                        createBillboardForPlayer(p)
-                    end
-                end
-            })
-            if WindUI then
-                WindUI:Notify({
-                    Title = "✅ ESP Items Enabled",
-                    Description = "✅ Item ESP functionality activated",
-                    Duration = 3
-                })
-            end
-        else
-            if ESPConnection then
-                ESPConnection:Disconnect()
-                ESPConnection = nil
-            end
-            clearAllItemsESP()
-            if WindUI then
-                WindUI:Notify({
-                    Title = "❌ ESP Items Disabled",
-                    Description = "❌ Item ESP functionality deactivated",
-                    Duration = 3
-                })
-            end
-        end
-    end
-})
-myConfig:Register("ItemsESP", ItemsESPToggle)
-
--- =========================
--- INITIALIZATION
--- =========================
-
--- Register items from game
-task.spawn(function()
-    task.wait(2)
-    local itemsFolder = ReplicatedStorage:FindFirstChild("Items")
-    if itemsFolder then
-        local categories = {"gun", "melee", "throwable", "consumable", "farming", "misc", "rod", "fish"}
-        for _, category in ipairs(categories) do
-            local categoryFolder = itemsFolder:FindFirstChild(category)
-            if categoryFolder then
-                registerItems(categoryFolder)
-            end
-        end
-        print("✅ Items database loaded")
-    end
-end)
-
--- Initialize ESP systems
-task.spawn(function()
-    task.wait(3)
-    -- Initialize for existing players
-    if espEnabled then
-        loadESP()
-    end
-    if ItemsESPEnabled then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                createBillboardForPlayer(p)
-            end
-        end
-    end
+    if highlights[player] then pcall(function() highlights[player]:Destroy() end) highlights[player]=nil end
 end)
 
 -- Auto-update highlights
 task.spawn(function()
     while true do
-        if highlightEnabled then
-            updateHighlights()
-        end
+        if highlightEnabled then updateHighlights() end
         task.wait(1)
     end
 end)
+
+-- สมมติว่า Window มีอยู่แล้ว
+-- local Window = <UI ของคุณ>
+
+-- สร้าง ESP Tab
+local ESPTab = Window:Tab({Title = "ESP", Icon = "eye"})
+
+-- Player ESP Master Toggle
+ESPTab:Toggle({
+    Title = "Player ESP",
+    Desc = "เปิด/ปิด ESP ผู้เล่นทั้งหมด",
+    Default = false,
+    Callback = function(state)
+        espEnabled = state
+        if state then
+            loadESP()
+        else
+            clearAllESP()
+        end
+    end
+})
+
+-- Individual ESP Toggles
+ESPTab:Toggle({
+    Title = "Box ESP",
+    Desc = "แสดงกล่องรอบผู้เล่น",
+    Default = false,
+    Callback = function(state)
+        boxESPEnabled = state
+    end
+})
+
+ESPTab:Toggle({
+    Title = "Name ESP",
+    Desc = "แสดงชื่อผู้เล่น",
+    Default = true,
+    Callback = function(state)
+        nameESPEnabled = state
+    end
+})
+
+ESPTab:Toggle({
+    Title = "Distance ESP",
+    Desc = "แสดงระยะห่าง",
+    Default = false,
+    Callback = function(state)
+        distanceESPEnabled = state
+    end
+})
+
+ESPTab:Toggle({
+    Title = "Highlight",
+    Desc = "ไฮไลท์ตัวผู้เล่น",
+    Default = false,
+    Callback = function(state)
+        highlightEnabled = state
+        updateHighlights()
+    end
+})
