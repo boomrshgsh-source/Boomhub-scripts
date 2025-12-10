@@ -563,9 +563,7 @@ local FriendsInput = Tab:Input({
 })
 myConfig:Register("FriendsList", FriendsInput)
 
--- CONFIG
--- STORAGE
-
+local TabESP = Window:Tab({Title = "ESP", Icon = "eye"})
 
 -- MAIN UPDATE
 RunService.RenderStepped:Connect(function()
