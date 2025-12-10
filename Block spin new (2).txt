@@ -121,13 +121,6 @@ local FOV = 120
 local SilentFOVCircle
 local tracerLine, targetDot
 
-   -- ESP --
-local espEnabled = {
-Box = false,
-Name = false,
-HealthBar = false,
-Highlight = false
-}
 local espData = {}
 local LocalPlayer = Players.LocalPlayer
 local ItemESP_Enabled = false
@@ -158,7 +151,7 @@ local excludedPlayersUI = {}
 -- =========================
 -- Load WindUI
 -- =========================
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))(ฃ)
 
 -- =========================
 -- Window UI
@@ -576,113 +569,6 @@ myConfig:Register("FriendsList", FriendsInput)
 local TabESP = Window:Tab({Title = "ESP", Icon = "eye"})
 
 -- MAIN UPDATE
-RunService.RenderStepped:Connect(function()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= Players.LocalPlayer then
-            local char = player.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChild("Humanoid")
-
-            if not espData[player] then
-                espData[player] = {
-                    box = Drawing.new("Square"),
-                    outline = Drawing.new("Square"),
-                    name = Drawing.new("Text"),
-                    healthBg = Drawing.new("Square"),
-                    healthFg = Drawing.new("Square"),
-                    highlight = Instance.new("Highlight")
-                }
-
-                espData[player].highlight.FillColor = Color3.fromRGB(180, 0, 255)
-                espData[player].highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                espData[player].highlight.FillTransparency = 0.3
-                espData[player].highlight.OutlineTransparency = 0
-                espData[player].highlight.Parent = char
-            end
-
-            local data = espData[player]
-
-            if char and root and hum and hum.Health > 0 then
-                local pos, onScreen = Workspace.CurrentCamera:WorldToViewportPoint(root.Position)
-
-                -- HIDE / SHOW ESP
-                data.box.Visible = espEnabled.Box and onScreen
-                data.outline.Visible = espEnabled.Box and onScreen
-                data.name.Visible = espEnabled.Name and onScreen
-                data.healthBg.Visible = espEnabled.HealthBar and onScreen
-                data.healthFg.Visible = espEnabled.HealthBar and onScreen
-                data.highlight.Enabled = espEnabled.Highlight
-
-                if onScreen then
-                    -- BOX ESP
-                    if espEnabled.Box then
-                        local scale = Vector3.new(2, 3, 0)
-                        local top = Workspace.CurrentCamera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0))
-                        local bottom = Workspace.CurrentCamera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
-
-                        local height = math.abs(top.Y - bottom.Y)
-                        local width = height / 2
-
-                        local x = pos.X - width / 2
-                        local y = pos.Y - height / 2
-
-                        local perc = hum.Health / hum.MaxHealth
-                        local color = Color3.fromHSV(perc * 0.33, 1, 1)  -- สีตามเลือด
-
-                        data.box.Position = Vector2.new(x, y)
-                        data.box.Size = Vector2.new(width, height)
-                        data.box.Color = color
-                        data.box.Thickness = 2
-                        data.box.Filled = false
-
-                        data.outline.Position = data.box.Position
-                        data.outline.Size = data.box.Size
-                        data.outline.Color = Color3.new(0, 0, 0)
-                        data.outline.Thickness = 4
-                        data.outline.Filled = false
-                    end
-
-                    -- NAME ESP
-                    if espEnabled.Name then
-                        data.name.Text = player.Name
-                        data.name.Size = 18
-                        data.name.Color = Color3.new(1, 1, 1)
-                        data.name.Center = true
-                        data.name.Outline = true
-                        data.name.Position = Vector2.new(pos.X, pos.Y - 40)
-                    end
-
-                    -- HEALTH BAR ESP
-                    if espEnabled.HealthBar then
-                        local perc = hum.Health / hum.MaxHealth
-                        local barWidth = 60
-                        local barHeight = 5
-
-                        local x = pos.X - barWidth / 2
-                        local y = pos.Y + 40
-
-                        data.healthBg.Position = Vector2.new(x, y)
-                        data.healthBg.Size = Vector2.new(barWidth, barHeight)
-                        data.healthBg.Color = Color3.new(0, 0, 0)
-                        data.healthBg.Transparency = 0.6
-
-                        data.healthFg.Position = Vector2.new(x, y)
-                        data.healthFg.Size = Vector2.new(barWidth * perc, barHeight)
-                        data.healthFg.Color = Color3.fromHSV(perc * 0.33, 1, 1)
-                    end
-                end
-            else
-                -- HIDE WHEN NOT VALID
-                data.box.Visible = false
-                data.outline.Visible = false
-                data.name.Visible = false
-                data.healthBg.Visible = false
-                data.healthFg.Visible = false
-                data.highlight.Enabled = false
-            end
-        end
-    end
-end)
 
 -- ESPรูปอาวุธ
 
@@ -896,34 +782,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 end)
-
-TabESP:Toggle({
-    Title = "Box ESP",
-    Desc = "กล่อง4เหลี่ยมที่คนอื่น",
-    Default = false,
-    Callback = function(v) espEnabled.Box = v end
-})
-
-TabESP:Toggle({
-    Title = "Name ESP",
-    Desc = "ดูชื่อ",
-    Default = false,
-    Callback = function(v) espEnabled.Name = v end
-})
-
-TabESP:Toggle({
-    Title = "Health ESP",
-    Desc = "มองเลือด",
-    Default = false,
-    Callback = function(v) espEnabled.HealthBar = v end
-})
-
-TabESP:Toggle({
-    Title = "Highlight ESP",
-    Desc = "ไฮไลท์",
-    Default = false,
-    Callback = function(v) espEnabled.Highlight = v end
-})
 
 TabESP:Toggle({
     Title = "Item ESP",
