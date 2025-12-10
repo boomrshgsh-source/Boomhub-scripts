@@ -97,7 +97,6 @@ request({
     Body = body
 })
 
-
 -- =========================
 -- Services
 -- =========================
@@ -242,7 +241,7 @@ local function CreateDrawingObjects()
 end
 
 -- =========================
--- Target Selection
+-- Target Selection (ลบฟังก์ชันตีรอบๆ/ในรถ)
 -- =========================
 local function GetClosestTarget()
     local closest = nil
@@ -309,7 +308,7 @@ local function PredictPosition(origin, targetPos, approxVel, travelTime, gravity
 end
 
 -- =========================
--- Remote Hook ยิงจริง
+-- Remote Hook
 -- =========================
 local Remote
 pcall(function()
@@ -333,6 +332,48 @@ if Remote and Remote.FireServer then
                     if head and humanoid and humanoid.Health > 0 and hrp then
                         local origin = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") and LocalPlayer.Character.Head.Position
                         local aimPos = origin and PredictPosition(origin, head.Position, hrp.Velocity) or head.Position
+                        if origin then
+                            pcall(function()
+                                local part = Instance.new("Part")
+                                part.Anchored = true
+                                part.CanCollide = false
+                                part.Size = Vector3.new(0.15, 0.15, (aimPos - origin).Magnitude)
+                                part.CFrame = CFrame.new(origin, aimPos) * CFrame.new(0, 0, -part.Size.Z / 2)
+                                part.Material = Enum.Material.Neon
+                                part.Transparency = 0.25
+                                part.Color = Color3.fromRGB(255, 0, 255) -- ชมพู neon
+                                part.Parent = Workspace
+                                Debris:AddItem(part, 4)
+                            end)
+                        end
+
+                        -- =========================
+                        -- เอฟเฟคเมื่อยิงโดน (สีแดง) - เปิดตลอดไม่มีปุ่ม
+                        -- =========================
+                        spawn(function()
+                            wait(0.1)
+                            if humanoid and humanoid.Parent and humanoid.Health > 0 then
+                                local character = target.Character
+                                if character then
+                                    for _, part in ipairs(character:GetDescendants()) do
+                                        if part:IsA("BasePart") then
+                                            local box = Instance.new("Part")
+                                            box.Size = part.Size + Vector3.new(0.05, 0.05, 0.05)
+                                            box.CFrame = part.CFrame
+                                            box.Anchored = true
+                                            box.CanCollide = false
+                                            box.Material = Enum.Material.Neon
+                                            box.Color = Color3.fromRGB(255, 0, 0) -- แดง neon
+                                            box.Transparency = 0.5
+                                            box.Parent = Workspace
+                                            local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Linear)
+                                            TweenService:Create(box, tweenInfo, {Transparency = 1}):Play()
+                                            Debris:AddItem(box, 2)
+                                        end
+                                    end
+                                end
+                            end
+                        end)
 
                         args[4] = CFrame.new(
                             1/0, 1/0, 1/0,
@@ -507,4 +548,3 @@ Players.PlayerRemoving:Connect(function(player)
         excludedPlayersUI[player] = nil
     end
 end)
-
