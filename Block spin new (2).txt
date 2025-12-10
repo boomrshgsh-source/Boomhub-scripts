@@ -1084,13 +1084,7 @@ Players.PlayerAdded:Connect(function(player)
     end)
 end)
 
--- =========================
--- ESP TAB 
--- =========================
-local Tab_ESP = Window:Tab({Title = "ESP:", Icon = "eye"})
-Tab_ESP:Section({Title = "ESP:"})
-
-local BoxESPToggle = Tab_ESP:Toggle({
+local BoxESPToggle = TabESP:Toggle({
     Title = "Box ESP",
     Desc = "กล่อง4เหลี่ยมที่คนอื่น",
     Default = false,
@@ -1100,7 +1094,7 @@ local BoxESPToggle = Tab_ESP:Toggle({
 })
 myConfig:Register("BoxESP", BoxESPToggle)
 
-local NameESPToggle = Tab_ESP:Toggle({
+local NameESPToggle = TabESP:Toggle({
     Title = "Name ESP",
     Desc = "มองชื่อ",
     Default = false,
@@ -1110,7 +1104,7 @@ local NameESPToggle = Tab_ESP:Toggle({
 })
 myConfig:Register("NameESP", NameESPToggle)
 
-local HealthESPToggle = Tab_ESP:Toggle({
+local HealthESPToggle = TabESP:Toggle({
     Title = "Health ESP",
     Desc = "มองเลือด (แดง<25%, เหลือง25-75%, เขียว>75%)",
     Default = false,
@@ -1120,7 +1114,7 @@ local HealthESPToggle = Tab_ESP:Toggle({
 })
 myConfig:Register("HealthESP", HealthESPToggle)
 
-local DistanceESPToggle = Tab_ESP:Toggle({
+local DistanceESPToggle = TabESP:Toggle({
     Title = "Distance ESP",
     Desc = "มองระยะทาง",
     Default = false,
@@ -1130,7 +1124,7 @@ local DistanceESPToggle = Tab_ESP:Toggle({
 })
 myConfig:Register("DistanceESP", DistanceESPToggle)
 
-local HighlightToggle = Tab_ESP:Toggle({
+local HighlightToggle = TabESP:Toggle({
     Title = "Highlight",
     Desc = "ไฮไลท์ที่ตัวคนอื่น",
     Default = false,
