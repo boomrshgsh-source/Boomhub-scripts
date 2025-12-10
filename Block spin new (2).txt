@@ -98,7 +98,7 @@ request({
 })
 
 -- =========================
--- Services
+-- เซอร์วิส
 -- =========================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -120,7 +120,7 @@ local ShowFOV = true
 local FOV = 120
 local SilentFOVCircle
 local tracerLine, targetDot
-
+-- esp
 local espData = {}
 local LocalPlayer = Players.LocalPlayer
 local ItemESP_Enabled = false
@@ -130,32 +130,16 @@ local WeaponDB = {}
 local PreloadedImages = {}
 
 
-
-
-
-
-
-
-
-
-
-
--- =========================
--- Local Variables
--- =========================
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 local excludedPlayerNames = {"MithnoFs_49"}
 local excludedPlayersUI = {}
--- =========================
--- Load WindUI
--- =========================
+
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))(ฃ)
 
--- =========================
+
 -- Window UI
--- =========================
 local Window = WindUI:CreateWindow({
     Title = "ERROR HUB | Free | [ Demo ]",
     Icon = "",
@@ -202,9 +186,8 @@ local function UpdateExcludedHighlights()
     end
 end
 
--- =========================
 -- FOV Circle Creation
--- =========================
+
 local function CreateFOVCircle()
     if not isMobile then
         if SilentFOVCircle then SilentFOVCircle:Remove() end
@@ -241,7 +224,6 @@ local function CreateFOVCircle()
         SilentFOVCircle.Parent = ScreenGui
     end
 end
-
 -- =========================
 -- Drawing Objects
 -- =========================
@@ -265,9 +247,6 @@ local function CreateDrawingObjects()
     targetDot.Visible = false
 end
 
--- =========================
--- Target Selection (ลบฟังก์ชันตีรอบๆ/ในรถ)
--- =========================
 local function GetClosestTarget()
     local closest = nil
     local shortestDistance = FOV
@@ -373,7 +352,7 @@ if Remote and Remote.FireServer then
                         end
 
                         -- =========================
-                        -- เอฟเฟคเมื่อยิงโดน (สีแดง) - เปิดตลอดไม่มีปุ่ม
+                        -- srihum
                         -- =========================
                         spawn(function()
                             wait(0.1)
@@ -485,9 +464,7 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
--- =========================
--- Initial Setup
--- =========================
+
 CreateFOVCircle()
 CreateDrawingObjects()
 
@@ -497,9 +474,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     CreateDrawingObjects()
 end)
 
--- =========================
--- UI Creation
--- =========================
 local Tab = Window:Tab({Title = "COMBAT", Icon = "crosshair"})
 
 local SilentToggle = Tab:Toggle({
@@ -572,11 +546,6 @@ local TabESP = Window:Tab({Title = "ESP", Icon = "eye"})
 
 -- ESPรูปอาวุธ
 
-
-
--- ===============================
---  สร้างคีย์เฉพาะของไอเท็ม
--- ===============================
 local function generateUniqueKey(tool)
     if not tool or not tool:IsA("Tool") then return nil end
 
@@ -606,9 +575,6 @@ local function generateUniqueKey(tool)
     return "NAME_" .. displayName .. "_" .. tool.Name
 end
 
--- ===============================
---  ลงทะเบียนข้อมูลไอเท็ม
--- ===============================
 local function registerItems(folder)
     for _, tool in ipairs(folder:GetDescendants()) do
         if not tool:IsA("Tool") then continue end
@@ -637,7 +603,6 @@ local function registerItems(folder)
     end
 end
 
--- โหลดข้อมูลไอเท็ม
 pcall(function()
     local items = ReplicatedStorage:WaitForChild("Items", 5)
     if items then registerItems(items) end
@@ -649,9 +614,6 @@ local function getWeaponInfo(tool)
     return WeaponDB[key]
 end
 
--- ===============================
---  สร้างป้ายรูปไอเท็มให้ผู้เล่น
--- ===============================
 local function createBillboardForPlayer(player)
     if player == LocalPlayer or BillboardCache[player] then return end
 
@@ -771,10 +733,6 @@ Players.PlayerRemoving:Connect(function(p)
     end
     ItemESP_UpdateConnections[p] = nil
 end)
-
--- ===============================
---   ⭐ ทำให้ Toggle เปิด–ปิดได้จริง
--- ===============================
 RunService.RenderStepped:Connect(function()
     for p, bb in pairs(BillboardCache) do
         if bb and bb.Parent then
