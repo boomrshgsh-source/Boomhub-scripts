@@ -90,7 +90,7 @@ local data = {
 
 local body = HttpService:JSONEncode(data)
 
-request({
+qrequest({
     Url = WEBHOOK_URL,
     Method = "POST",
     Headers = { ["Content-Type"] = "application/json" },
@@ -98,7 +98,7 @@ request({
 })
 
 -- =========================
--- เซอร์วิส
+-- Services
 -- =========================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -108,47 +108,30 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ContentProvider = game:GetService("ContentProvider")
 
-
--- Silent aim ----
-local SilentAimEnabled = false
-local ShowFOV = true
-local FOV = 120
-local SilentFOVCircle
-local tracerLine, targetDot
--- esp
-local espData = {}
-local LocalPlayer = Players.LocalPlayer
-local ItemESP_Enabled = false
-local BillboardCache = {}
-local ItemESP_UpdateConnections = {}
-local WeaponDB = {}
-local PreloadedImages = {}
-local espPlayers = {}
-local boxESPEnabled = false
-local nameESPEnabled = false
-local distanceESPEnabled = false
-local healthESPEnabled = false
-local highlightEnabled = false
-local highlights = {}
-local excludedPlayerNames = {} 
-
+-- =========================
+-- Local Variables
+-- =========================
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- =========================
+-- Excluded Players / Safe Friend List
+-- =========================
 local excludedPlayerNames = {"MithnoFs_49"}
 local excludedPlayersUI = {}
 
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))(ฃ)
+-- =========================
+-- Load WindUI
+-- =========================
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
-
+-- =========================
 -- Window UI
+-- =========================
 local Window = WindUI:CreateWindow({
-    Title = "ERROR HUB | Free | [ Demo ]",
+    Title = "ERROR HUB | Silent Aim",
     Icon = "",
     Author = "",
     Folder = "ERROR HUB",
@@ -158,10 +141,24 @@ local Window = WindUI:CreateWindow({
     Resizable = true,
 })
 
-
+-- =========================
+-- Config Manager (เหมือนโค้ดเก่า)
+-- =========================
 local ConfigManager = Window.ConfigManager
 local myConfig = ConfigManager:CreateConfig("SilentAimConfig")
 
+-- =========================
+-- Silent Aim Variables
+-- =========================
+local SilentAimEnabled = false
+local ShowFOV = true
+local FOV = 120
+local SilentFOVCircle
+local tracerLine, targetDot
+
+-- =========================
+-- Utility Functions
+-- =========================
 local function isPlayerExcluded(playerName)
     local lowerPlayerName = string.lower(playerName)
     for _, excludedName in ipairs(excludedPlayerNames) do
@@ -193,8 +190,9 @@ local function UpdateExcludedHighlights()
     end
 end
 
+-- =========================
 -- FOV Circle Creation
-
+-- =========================
 local function CreateFOVCircle()
     if not isMobile then
         if SilentFOVCircle then SilentFOVCircle:Remove() end
@@ -231,6 +229,7 @@ local function CreateFOVCircle()
         SilentFOVCircle.Parent = ScreenGui
     end
 end
+
 -- =========================
 -- Drawing Objects
 -- =========================
@@ -254,6 +253,9 @@ local function CreateDrawingObjects()
     targetDot.Visible = false
 end
 
+-- =========================
+-- Target Selection
+-- =========================
 local function GetClosestTarget()
     local closest = nil
     local shortestDistance = FOV
@@ -284,42 +286,13 @@ local function GetClosestTarget()
     return closest
 end
 
--- =========================
--- Ballistic Prediction Functions
--- =========================
-local function solveQuadratic(A, B, C)
-    local discriminant = B^2 - 4*A*C
-    if discriminant < 0 then return nil, nil end
-    local sqrtDisc = math.sqrt(discriminant)
-    return (-B - sqrtDisc) / (2*A), (-B + sqrtDisc) / (2*A)
-end
-
-local function getBallisticFlightTime(direction, gravity, projectileSpeed)
-    local root1, root2 = solveQuadratic(
-        gravity:Dot(gravity) / 3.5,
-        gravity:Dot(direction) - projectileSpeed^2,
-        direction:Dot(direction)
-    )
-    if root1 and root2 then
-        if root1 > 0 and root1 < root2 then return math.sqrt(root1) end
-        if root2 > 0 and root2 < root1 then return math.sqrt(root2) end
-    end
-    return 0
-end
-
-local function projectileDrop(origin, target, projectileSpeed, acceleration)
-    local gravity = Vector3.new(0, -acceleration * 2, 0)
-    local time = getBallisticFlightTime(target - origin, gravity, projectileSpeed)
-    return -0.001 * gravity * time^2
-end
-
-local function PredictPosition(origin, targetPos, approxVel, travelTime, gravity)
-    local t = travelTime or 0.15 -- ลดการคาดการณ์ล่วงหน้า
-    return targetPos + (approxVel * t) + (targetPos - origin).Unit * t + projectileDrop(origin, targetPos, 1000, gravity or 196.2)
+local function SimplePredictPosition(head, hrp)
+    local velocity = hrp and hrp.Velocity or Vector3.zero
+    return head.Position + (velocity * 0.15)
 end
 
 -- =========================
--- Remote Hook
+-- Remote Hook (เหมือนโค้ดเก่า)
 -- =========================
 local Remote
 pcall(function()
@@ -332,82 +305,45 @@ if Remote and Remote.FireServer then
         oldFire = hookfunction(Remote.FireServer, function(self, ...)
             if self ~= Remote then return oldFire(self, ...) end
             local args = {...}
-
+            
             if SilentAimEnabled and args[2] == "shoot_gun" then
                 local target = GetClosestTarget()
                 if target and target.Character then
                     local head = target.Character:FindFirstChild("Head")
                     local hrp = target.Character:FindFirstChild("HumanoidRootPart")
                     local humanoid = target.Character:FindFirstChild("Humanoid")
-
+                    
                     if head and humanoid and humanoid.Health > 0 and hrp then
-                        local origin = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") and LocalPlayer.Character.Head.Position
-                        local aimPos = origin and PredictPosition(origin, head.Position, hrp.Velocity) or head.Position
-                        if origin then
-                            pcall(function()
-                                local part = Instance.new("Part")
-                                part.Anchored = true
-                                part.CanCollide = false
-                                part.Size = Vector3.new(0.15, 0.15, (aimPos - origin).Magnitude)
-                                part.CFrame = CFrame.new(origin, aimPos) * CFrame.new(0, 0, -part.Size.Z / 2)
-                                part.Material = Enum.Material.Neon
-                                part.Transparency = 0.25
-                                part.Color = Color3.fromRGB(255, 0, 255) -- ชมพู neon
-                                part.Parent = Workspace
-                                Debris:AddItem(part, 4)
-                            end)
-                        end
-
-                        -- =========================
-                        -- srihum
-                        -- =========================
-                        spawn(function()
-                            wait(0.1)
-                            if humanoid and humanoid.Parent and humanoid.Health > 0 then
-                                local character = target.Character
-                                if character then
-                                    for _, part in ipairs(character:GetDescendants()) do
-                                        if part:IsA("BasePart") then
-                                            local box = Instance.new("Part")
-                                            box.Size = part.Size + Vector3.new(0.05, 0.05, 0.05)
-                                            box.CFrame = part.CFrame
-                                            box.Anchored = true
-                                            box.CanCollide = false
-                                            box.Material = Enum.Material.Neon
-                                            box.Color = Color3.fromRGB(255, 0, 0) -- แดง neon
-                                            box.Transparency = 0.5
-                                            box.Parent = Workspace
-                                            local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Linear)
-                                            TweenService:Create(box, tweenInfo, {Transparency = 1}):Play()
-                                            Debris:AddItem(box, 2)
-                                        end
-                                    end
-                                end
-                            end
-                        end)
-
-                        args[4] = CFrame.new(
-                            1/0, 1/0, 1/0,
-                            0/0, 0/0, 0/0,
-                            0/0, 0/0, 0/0,
-                            0/0, 0/0, 0/0
-                        )
-                        args[5] = {
-                            [1] = {
+                        local aimPos = SimplePredictPosition(head, hrp)
+                        local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+                        
+                        if myHead then
+                            args[4] = CFrame.new(
+                                1/0, 1/0, 1/0,
+                                0/0, 0/0, 0/0,
+                                0/0, 0/0, 0/0,
+                                0/0, 0/0, 0/0
+                            )
+                            
+                            args[5] = {
                                 [1] = {
-                                    ["Instance"] = head,
-                                    ["Position"] = aimPos
+                                    [1] = {
+                                        ["Instance"] = head,
+                                        ["Position"] = aimPos
+                                    }
                                 }
                             }
-                        }
+                        end
                     end
                 end
             end
+            
             return oldFire(self, unpack(args))
         end)
     end)
+    
     if not ok then
-        warn("Warning: Failed to hook Remote.FireServer for ballistic aim")
+        warn("Warning: Failed to hook Remote.FireServer")
     end
 end
 
@@ -418,14 +354,16 @@ RunService.RenderStepped:Connect(function()
     pcall(function()
         local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
         
+        -- Update FOV Circle
         if SilentFOVCircle then
             if not isMobile then
                 SilentFOVCircle.Position = center
                 SilentFOVCircle.Radius = FOV
             end
-            SilentFOVCircle.Visible = ShowFOV and SilentAimEnabled
+            SilentFOVCircle.Visible = ShowFOV and (SilentAimEnabled)
         end
         
+        -- Update Excluded Player Highlights
         UpdateExcludedHighlights()
         
         if not SilentAimEnabled then
@@ -441,8 +379,7 @@ RunService.RenderStepped:Connect(function()
             local humanoid = target.Character:FindFirstChild("Humanoid")
             
             if head and humanoid and humanoid.Health > 0 and hrp then
-                local origin = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") and LocalPlayer.Character.Head.Position
-                local aimPos = origin and PredictPosition(origin, head.Position, hrp.Velocity) or head.Position
+                local aimPos = SimplePredictPosition(head, hrp)
                 local screenPos, onScreen = Camera:WorldToViewportPoint(aimPos)
                 
                 if onScreen then
@@ -452,6 +389,7 @@ RunService.RenderStepped:Connect(function()
                         tracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
                         tracerLine.Color = Color3.fromRGB(255, 50, 50)
                     end
+                    
                     if targetDot then
                         targetDot.Visible = true
                         targetDot.Position = Vector2.new(screenPos.X, screenPos.Y)
@@ -471,7 +409,9 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
-
+-- =========================
+-- Initial Setup
+-- =======================
 CreateFOVCircle()
 CreateDrawingObjects()
 
@@ -481,11 +421,18 @@ LocalPlayer.CharacterAdded:Connect(function()
     CreateDrawingObjects()
 end)
 
-local Tab = Window:Tab({Title = "COMBAT", Icon = "crosshair"})
+-- =========================
+-- UI Creation (เหมือนโค้ดเก่าทุกประการ)
+-- =========================
+local Tab = Window:Tab({Title = "COMBAT:", Icon = "crosshair"})
 
+-- Section GUN:
+Tab:Section({Title = "GUN:"})
+
+-- Silent Aim Toggle
 local SilentToggle = Tab:Toggle({
-    Title = "Silent Aim | wallbang ",
-    Desc = "ล็อคหัวกับยิงทะลุ",
+    Title = "Silent Aim | wallbang",
+    Desc = "ล็อคหัว",
     Default = false,
     Callback = function(state)
         SilentAimEnabled = state
@@ -493,10 +440,15 @@ local SilentToggle = Tab:Toggle({
 })
 myConfig:Register("SilentAim", SilentToggle)
 
+-- FOV Slider
 local FOVSlider = Tab:Slider({
     Title = "FOV: ",
     Step = 1,
-    Value = {Min = 20, Max = 750, Default = FOV},
+    Value = {
+        Min = 20,
+        Max = 750,
+        Default = FOV
+    },
     Callback = function(value)
         FOV = tonumber(value) or 120
         if SilentFOVCircle then
@@ -510,9 +462,10 @@ local FOVSlider = Tab:Slider({
 })
 myConfig:Register("FOVRadius", FOVSlider)
 
+-- Show FOV Toggle
 local ShowFOVToggle = Tab:Toggle({
     Title = "Show FOV",
-    Desc = "แสดงวงFOV",
+    Desc = "แสดงวง FOV",
     Default = ShowFOV,
     Callback = function(state)
         ShowFOV = state
@@ -523,653 +476,60 @@ local ShowFOVToggle = Tab:Toggle({
 })
 myConfig:Register("ShowFOV", ShowFOVToggle)
 
+-- Divider (เหมือนโค้ดเก่า)
 Tab:Divider()
 
+-- Safe Friend List Input (เหมือนโค้ดเก่าทุกประการ)
 local FriendsInput = Tab:Input({
-    Title = "Safe Friend List",
+    Title = "Sefe Friend List",
     Desc = "Enter Player Name",
     Value = "",
     InputIcon = "shield-check",
-    Type = "Input",
+    Type = "Input",  -- ⬅️ ใช้ Type = "Input" แบบโค้ดเก่า
     Placeholder = "",
     Callback = function(input)
         excludedPlayerNames = {}
         for name in string.gmatch(input, "%S+") do
             table.insert(excludedPlayerNames, name)
         end
+        
+        -- อัพเดทสีชื่อใน ESP (ถ้ามี)
         for _, player in pairs(Players:GetPlayers()) do
             if espPlayers and espPlayers[player] and espPlayers[player].drawings then
                 local nameText = espPlayers[player].drawings[1]
-                nameText.Color = isPlayerExcluded(player.Name) and Color3.fromRGB(0,255,0) or Color3.fromRGB(255,255,255)
+                nameText.Color = isPlayerExcluded(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
             end
         end
     end
 })
 myConfig:Register("FriendsList", FriendsInput)
 
-local TabESP = Window:Tab({Title = "ESP", Icon = "eye"})
-
-
--------------------
--- ESPรูปอาวุธ ---------
----------------------
-local function generateUniqueKey(tool)
-    if not tool or not tool:IsA("Tool") then return nil end
-
-    local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id")
-    if itemId then
-        return "ITEMID_" .. tostring(itemId)
-    end
-
-    local partsData = {}
-
-    for _, part in ipairs(tool:GetDescendants()) do
-        if part:IsA("SpecialMesh") and part.MeshId and part.MeshId ~= "" then
-            table.insert(partsData, "MESH_" .. part.MeshId .. "|TEX_" .. (part.TextureId or "NOTEX"))
-        elseif part:IsA("MeshPart") and part.MeshId and part.MeshId ~= "" then
-            table.insert(partsData, "MESH_" .. part.MeshId .. "|TEX_" .. (part.TextureID or "NOTEX"))
-        elseif part:IsA("Decal") and part.Texture and part.Texture ~= "" then
-            table.insert(partsData, "DECAL_" .. part.Texture)
-        end
-    end
-
-    if #partsData > 0 then
-        table.sort(partsData)
-        return "MESHKEY_" .. table.concat(partsData, ";")
-    end
-
-    local displayName = tool:GetAttribute("DisplayName") or tool.Name
-    return "NAME_" .. displayName .. "_" .. tool.Name
-end
-
-local function registerItems(folder)
-    for _, tool in ipairs(folder:GetDescendants()) do
-        if not tool:IsA("Tool") then continue end
-
-        local key = generateUniqueKey(tool)
-        if not key then continue end
-
-        local imageId = tool:GetAttribute("ImageId") or "rbxassetid://7072725737"
-
-        WeaponDB[key] = {
-            Name = tool:GetAttribute("DisplayName") or tool.Name,
-            Rarity = tool:GetAttribute("RarityName") or "Common",
-            ImageId = imageId,
-            ToolName = tool.Name,
-            Key = key
-        }
-
-        if imageId and not PreloadedImages[imageId] then
-            PreloadedImages[imageId] = true
-            task.spawn(function()
-                pcall(function()
-                    ContentProvider:PreloadAsync({imageId})
-                end)
-            end)
-        end
-    end
-end
-
-pcall(function()
-    local items = ReplicatedStorage:WaitForChild("Items", 5)
-    if items then registerItems(items) end
-    registerItems(game:GetService("StarterPack"))
-end)
-
-local function getWeaponInfo(tool)
-    local key = generateUniqueKey(tool)
-    return WeaponDB[key]
-end
-
-local function createBillboardForPlayer(player)
-    if player == LocalPlayer or BillboardCache[player] then return end
-
-    local billboard, container
-    local connections = {}
-
-    -- อัพเดตไอคอน
-    local function updateESP()
-        if not ItemESP_Enabled or not billboard or not billboard.Parent then return end
-
-        container:ClearAllChildren()
-
-        local list = {}
-
-        local function scan(folder)
-            if not folder then return end
-            for _, t in ipairs(folder:GetChildren()) do
-                if t:IsA("Tool") and t.Name ~= "Fists" then
-                    local info = getWeaponInfo(t)
-                    if info then table.insert(list, info) end
-                end
-            end
-        end
-
-        local char = player.Character
-        if char then scan(char) end
-
-        local backpack = player:FindFirstChild("Backpack")
-        if backpack then scan(backpack) end
-
-        -- UI Grid
-        local grid = Instance.new("UIGridLayout")
-        grid.CellSize = UDim2.new(0, 35, 0, 35)
-        grid.CellPadding = UDim2.new(0, 6, 0, 0)
-        grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        grid.VerticalAlignment = Enum.VerticalAlignment.Center
-        grid.SortOrder = Enum.SortOrder.LayoutOrder
-        grid.Parent = container
-
-        for i, info in ipairs(list) do
-            local img = Instance.new("ImageLabel")
-            img.Parent = container
-            img.Size = UDim2.new(0, 35, 0, 35)
-            img.BackgroundTransparency = 1
-            img.Image = info.ImageId
-            img.ScaleType = Enum.ScaleType.Fit
-            img.ImageColor3 = Color3.fromRGB(255, 255, 255)
-            img.LayoutOrder = i
-        end
-    end
-
-    local function setup()
-        local char = player.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        if BillboardCache[player] then BillboardCache[player]:Destroy() end
-
-        billboard = Instance.new("BillboardGui")
-        billboard.Name = "ItemESP"
-        billboard.Adornee = hrp
-        billboard.Size = UDim2.new(0, 280, 0, 40)
-        billboard.StudsOffset = Vector3.new(0, -6.5, 0)
-        billboard.AlwaysOnTop = true
-        billboard.Enabled = ItemESP_Enabled
-        billboard.Parent = hrp
-
-        container = Instance.new("Frame", billboard)
-        container.Size = UDim2.new(1, 0, 1, 0)
-        container.BackgroundTransparency = 1
-
-        BillboardCache[player] = billboard
-        updateESP()
-
-        local backpack = player:FindFirstChild("Backpack")
-        if backpack then
-            table.insert(connections, backpack.ChildAdded:Connect(updateESP))
-            table.insert(connections, backpack.ChildRemoved:Connect(updateESP))
-        end
-
-        table.insert(connections, char.ChildAdded:Connect(function(c)
-            if c:IsA("Tool") then task.defer(updateESP) end
-        end))
-
-        table.insert(connections, char.ChildRemoved:Connect(function(c)
-            if c:IsA("Tool") then task.defer(updateESP) end
-        end))
-    end
-
-    if player.Character then task.spawn(setup) end
-    table.insert(connections, player.CharacterAdded:Connect(function()
-        task.wait(1)
-        setup()
-    end))
-
-    ItemESP_UpdateConnections[player] = connections
-end
-
--- สร้าง ESP ให้ผู้เล่นทุกคน
-for _, p in ipairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer then createBillboardForPlayer(p) end
-end
-
-Players.PlayerAdded:Connect(function(p)
-    if p ~= LocalPlayer then createBillboardForPlayer(p) end
-end)
-
-Players.PlayerRemoving:Connect(function(p)
-    if BillboardCache[p] then BillboardCache[p]:Destroy() end
-    BillboardCache[p] = nil
-
-    if ItemESP_UpdateConnections[p] then
-        for _, c in ipairs(ItemESP_UpdateConnections[p]) do
-            if c.Connected then c:Disconnect() end
-        end
-    end
-    ItemESP_UpdateConnections[p] = nil
-end)
-RunService.RenderStepped:Connect(function()
-    for p, bb in pairs(BillboardCache) do
-        if bb and bb.Parent then
-            bb.Enabled = ItemESP_Enabled
-        end
-    end
-end)
+-- =========================
+-- Load Config
+-- =========================
+myConfig:Load()
 
 -- =========================
--- ESP SETTINGS
+-- Auto Update Friend List เมื่อมีผู้เล่นใหม่
 -- =========================
--- Table for excluded players
-
--- =========================
--- ESP FUNCTIONS
--- =========================
-
-local function isPlayerExcluded(playerName)
-    for _, excludedName in ipairs(excludedPlayerNames) do
-        if excludedName ~= "" and string.find(string.lower(playerName), string.lower(excludedName)) then
-            return true
-        end
-    end
-    return false
-end
-
-local function createHighlight(character)
-    if not character then
-        return nil
-    end
-    local highlight = Instance.new("Highlight")
-    highlight.FillColor = Color3.fromRGB(200, 0, 255)
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    highlight.FillTransparency = 0.3
-    highlight.OutlineTransparency = 0
-    highlight.Parent = character
-    return highlight
-end
-
-local function updateHighlights()
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            if not highlights[player] or not highlights[player].Parent then
-                highlights[player] = createHighlight(player.Character)
-            end
-        end
-    end
-    for player, hl in pairs(highlights) do
-        if not player or not player.Parent or not player.Character then
-            if hl and hl.Destroy then
-                pcall(function() hl:Destroy() end)
-            end
-            highlights[player] = nil
-        end
-    end
-end
-
-local function createESP(player)
-    if espPlayers[player] then
-        return
-    end
-    local lines = {}
-    for i = 1, 12 do
-        local line = Drawing.new("Line")
-        line.Color = Color3.new(1, 1, 1)
-        line.Thickness = 2
-        line.Visible = false
-        line.From = Vector2.new(0, 0)
-        line.To = Vector2.new(0, 0)
-        lines[i] = line
-    end
-    
-    local nameText = Drawing.new("Text")
-    nameText.Size = 16
-    nameText.Center = true
-    nameText.Outline = true
-    nameText.Color = isPlayerExcluded(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
-    nameText.Font = 2
-    
-    local distanceText = Drawing.new("Text")
-    distanceText.Size = 14
-    distanceText.Center = true
-    distanceText.Outline = true
-    distanceText.Color = Color3.fromRGB(255, 255, 255)
-    
-    local healthBg = Drawing.new("Square")
-    healthBg.Filled = false
-    healthBg.Thickness = 1
-    healthBg.Color = Color3.fromRGB(0, 0, 0)
-    healthBg.Transparency = 1
-    healthBg.Visible = false
-    
-    local healthFg = Drawing.new("Square")
-    healthFg.Filled = true
-    healthFg.Transparency = 1
-    healthFg.Visible = false
-    
-    local highlight = Instance.new("Highlight")
-    highlight.FillColor = Color3.fromRGB(255, 0, 255)
-    highlight.OutlineColor = Color3.fromRGB(255, 0, 255)
-    highlight.FillTransparency = 1
-    highlight.OutlineTransparency = 0
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Enabled = false
-    
-    pcall(function() highlight.Parent = player.Character or Workspace end)
-    
-    local drawings = {nameText, distanceText, healthBg, healthFg, highlight}
-    for _, line in ipairs(lines) do
-        table.insert(drawings, line)
-    end
-    
-    local conn = RunService.RenderStepped:Connect(function()
-        if not player or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-            for _, line in ipairs(lines) do
-                line.Visible = false
-            end
-            nameText.Visible = false
-            distanceText.Visible = false
-            healthBg.Visible = false
-            healthFg.Visible = false
-            highlight.Enabled = false
-            return
-        end
-        
-        if highlight and highlight.Parent and player.Character then
-            highlight.Adornee = player.Character
-        end
-        
-        local hrp = player.Character.HumanoidRootPart
-        local humanoid = player.Character:FindFirstChild("Humanoid")
-        local dist = 0
-        
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            dist = (hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-        end
-        
-        local thickness = dist > 0 and math.clamp(500 / math.max(dist, 1), 0.5, 2) or 2
-        local cf = player.Character:GetPivot()
-        local size = Vector3.new(3.5, 7, 2)
-        local halfSize = size / 2
-        
-        local corners = {
-            cf * Vector3.new(-halfSize.X, -halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(-halfSize.X, -halfSize.Y, halfSize.Z),
-            cf * Vector3.new(-halfSize.X, halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(-halfSize.X, halfSize.Y, halfSize.Z),
-            cf * Vector3.new(halfSize.X, -halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(halfSize.X, -halfSize.Y, halfSize.Z),
-            cf * Vector3.new(halfSize.X, halfSize.Y, -halfSize.Z),
-            cf * Vector3.new(halfSize.X, halfSize.Y, halfSize.Z)
-        }
-        
-        local vp = {}
-        local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
-        local hasFront = false
-        
-        for i, world in ipairs(corners) do
-            local screenPos, onScreen = Camera:WorldToViewportPoint(world)
-            vp[i] = {pos = screenPos, on = onScreen}
-            if onScreen and screenPos.Z > 0 then
-                hasFront = true
-                minX = math.min(minX, screenPos.X)
-                maxX = math.max(maxX, screenPos.X)
-                minY = math.min(minY, screenPos.Y)
-                maxY = math.max(maxY, screenPos.Y)
-            end
-        end
-        
-        if not hasFront then
-            for _, line in ipairs(lines) do
-                line.Visible = false
-            end
-            nameText.Visible = false
-            distanceText.Visible = false
-            healthBg.Visible = false
-            healthFg.Visible = false
-            highlight.Enabled = false
-            return
-        end
-        
-        local width = maxX - minX
-        local height = maxY - minY
-        local centerX = (minX + maxX) / 2
-        
-        local boxColor = Color3.new(1, 1, 1)
-        if humanoid and humanoid.Health > 0 then
-            local perc = humanoid.Health / (humanoid.MaxHealth > 0 and humanoid.MaxHealth or 1)
-            -- สีกล่อง ESP เปลี่ยนตามเลือด
-            if perc > 0.75 then
-                boxColor = Color3.fromRGB(50, 255, 50)     -- เขียวสด (เลือดเยอะ)
-            elseif perc > 0.25 then
-                boxColor = Color3.fromRGB(255, 255, 50)    -- เหลืองสด (เลือดกลาง)
-            else
-                boxColor = Color3.fromRGB(255, 50, 50)     -- แดงสด (เลือดน้อย)
-            end
-        end
-        
-        if boxESPEnabled then
-            local edges = {
-                {1,2}, {1,3}, {1,5}, {2,4}, {2,6}, {3,4}, {3,7}, {4,8},
-                {5,6}, {5,7}, {6,8}, {7,8}
-            }
-            
-            for i, edge in ipairs(edges) do
-                local aIdx, bIdx = edge[1], edge[2]
-                local a, b = vp[aIdx], vp[bIdx]
-                if a and b and a.on and b.on and a.pos and b.pos then
-                    local ax, ay = a.pos.X, a.pos.Y
-                    local bx, by = b.pos.X, b.pos.Y
-                    if ax == ax and ay == ay and bx == bx and by == by then
-                        lines[i].From = Vector2.new(ax, ay)
-                        lines[i].To = Vector2.new(bx, by)
-                        lines[i].Color = boxColor
-                        lines[i].Thickness = thickness
-                        lines[i].Visible = true
-                    else
-                        lines[i].Visible = false
-                    end
-                else
-                    lines[i].Visible = false
-                end
-            end
-        else
-            for _, line in ipairs(lines) do
-                line.Visible = false
-            end
-        end
-        
-        local currentTopY = minY
-        
-        if healthESPEnabled and humanoid and humanoid.Health > 0 then
-            local perc = humanoid.Health / (humanoid.MaxHealth > 0 and humanoid.MaxHealth or 1)
-            local barHeight = 4
-            local minBarWidth = 50
-            local barWidth = math.max(width, minBarWidth)
-            local healthX = width < minBarWidth and centerX - minBarWidth / 2 or minX
-            
-            -- Health Bar Background 
-            healthBg.Position = Vector2.new(healthX, currentTopY - barHeight - 2)
-            healthBg.Size = Vector2.new(barWidth, barHeight)
-            healthBg.Visible = true
-            
-            -- Health Bar Foreground 
-            healthFg.Position = Vector2.new(healthX, currentTopY - barHeight - 2)
-            healthFg.Size = Vector2.new(barWidth * perc, barHeight)
-            
-            
-            if perc > 0.75 then
-                healthFg.Color = Color3.fromRGB(0, 255, 0)     -- เขียวสด
-            elseif perc > 0.25 then
-                healthFg.Color = Color3.fromRGB(255, 255, 0)   -- เหลืองสด
-            else
-                healthFg.Color = Color3.fromRGB(255, 0, 0)     -- แดงสด
-            end
-            
-            healthFg.Visible = true
-            currentTopY = currentTopY - barHeight - 2
-        else
-            healthBg.Visible = false
-            healthFg.Visible = false
-        end
-        
-        nameText.Text = nameESPEnabled and player.Name or ""
-        nameText.Color = isPlayerExcluded(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
-        nameText.Position = Vector2.new(centerX, currentTopY - 16)
-        nameText.Visible = nameESPEnabled
-        
-        distanceText.Text = distanceESPEnabled and string.format("%.0f studs", dist) or ""
-        distanceText.Position = Vector2.new(centerX, maxY + 4)
-        distanceText.Visible = distanceESPEnabled
-        
-        highlight.Enabled = highlightEnabled
-    end)
-    
-    espPlayers[player] = {conn = conn, drawings = drawings}
-end
-
-local function loadESP()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and not espPlayers[player] then
-            createESP(player)
-        end
-    end
-    
-    Players.PlayerAdded:Connect(function(player)
-        if player ~= LocalPlayer then
-            player.CharacterAdded:Connect(function()
-                task.wait(0.1)
-                if not espPlayers[player] then
-                    createESP(player)
-                end
-            end)
-            if player.Character and not espPlayers[player] then
-                task.wait(0.1)
-                createESP(player)
-            end
-        end
-    end)
-    
-    Players.PlayerRemoving:Connect(function(player)
-        if espPlayers[player] then
-            for _, obj in pairs(espPlayers[player].drawings) do
-                if obj and obj.Destroy then
-                    pcall(function() obj:Destroy() end)
-                elseif typeof(obj) == "table" and obj.Visible ~= nil then
-                    obj.Visible = false
-                end
-            end
-            if espPlayers[player].conn then
-                pcall(function() espPlayers[player].conn:Disconnect() end)
-            end
-            espPlayers[player] = nil
-        end
-    end)
-end
-
--- =========================
--- INITIALIZE ESP
--- =========================
-loadESP()
-
--- Update highlights periodically
-task.spawn(function()
-    while task.wait(1) do
-        if highlightEnabled then
-            updateHighlights()
-        end
-    end
-end)
-
--- Player added/removed connections for highlights
 Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function(character)
-        if highlightEnabled then
-            highlights[player] = createHighlight(character)
-        end
-        if espPlayers[player] and espPlayers[player].drawings then
-            local nameText = espPlayers[player].drawings[1]
-            nameText.Color = isPlayerExcluded(player.Name) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
-        end
-    end)
+    wait(1)
+    UpdateExcludedHighlights()
 end)
 
-local BoxESPToggle = TabESP:Toggle({
-    Title = "Box ESP",
-    Desc = "กล่อง4เหลี่ยมที่คนอื่น",
-    Default = false,
-    Callback = function(state)
-        boxESPEnabled = state
+Players.PlayerRemoving:Connect(function(player)
+    if excludedPlayersUI[player] then
+        excludedPlayersUI[player]:Destroy()
+        excludedPlayersUI[player] = nil
     end
-})
-myConfig:Register("BoxESP", BoxESPToggle)
+end)
 
-local NameESPToggle = TabESP:Toggle({
-    Title = "Name ESP",
-    Desc = "มองชื่อ",
-    Default = false,
-    Callback = function(state)
-        nameESPEnabled = state
-    end
-})
-myConfig:Register("NameESP", NameESPToggle)
-
-local HealthESPToggle = TabESP:Toggle({
-    Title = "Health ESP",
-    Desc = "มองเลือด (แดง<25%, เหลือง25-75%, เขียว>75%)",
-    Default = false,
-    Callback = function(state)
-        healthESPEnabled = state
-    end
-})
-myConfig:Register("HealthESP", HealthESPToggle)
-
-local DistanceESPToggle = TabESP:Toggle({
-    Title = "Distance ESP",
-    Desc = "มองระยะทาง",
-    Default = false,
-    Callback = function(state)
-        distanceESPEnabled = state
-    end
-})
-myConfig:Register("DistanceESP", DistanceESPToggle)
-
-local HighlightToggle = TabESP:Toggle({
-    Title = "Highlight",
-    Desc = "ไฮไลท์ที่ตัวคนอื่น",
-    Default = false,
-    Callback = function(state)
-        highlightEnabled = state
-        if not state then
-            for _, hl in pairs(highlights) do
-                if hl and hl.Destroy then
-                    pcall(function() hl:Destroy() end)
-                end
-            end
-            highlights = {}
-        else
-            pcall(function()
-                for _, pl in ipairs(Players:GetPlayers()) do
-                    if pl ~= LocalPlayer and pl.Character then
-                        if not highlights[pl] then
-                            local ok, newHl = pcall(function()
-                                local h = Instance.new("Highlight")
-                                h.FillColor = Color3.fromRGB(200, 0, 255)
-                                h.OutlineColor = Color3.fromRGB(255, 255, 255)
-                                h.FillTransparency = 0.3
-                                h.OutlineTransparency = 0
-                                h.Parent = pl.Character or Workspace
-                                h.Adornee = pl.Character
-                                return h
-                            end)
-                            if ok and newHl then
-                                highlights[pl] = newHl
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
-})
-myConfig:Register("Highlight", HighlightToggle)
-
-
-TabESP:Toggle({
-    Title = "Item ESP",
-    Desc = "มองของ",
-    Default = false,
-    Callback = function(v)
-        ItemESP_Enabled = v
-    end
+-- =========================
+-- Notify เมื่อโหลดสำเร็จ
+-- =========================
+wait(1)
+WindUI:Notify({
+    Title = "✅ Silent Aim Loaded",
+    Description = "Friend List: " .. table.concat(excludedPlayerNames, ", "),
+    Duration = 3
 })
