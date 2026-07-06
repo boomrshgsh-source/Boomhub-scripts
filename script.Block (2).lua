@@ -1868,16 +1868,14 @@ EspTab:Toggle({
 
 
 	
--- Esp Inventory พร้อมปุ่มเปิดปิด
 EspTab:Toggle({
     Title = 'Esp Inventory',
-    Desc = "แสดงไอเทมในกระเป๋าของทุกคน (อยู่ใต้ตัวละคร)",
+    Desc = "แสดงไอเทมในกระเป๋าของทุกคน",
     Default = true,
     Callback = function(Value)
         _G.InventoryViewerEnabled = Value
         
         if not Value then
-            -- ปิด: ลบ GUI ทั้งหมด
             for _, v in pairs(Players:GetPlayers()) do
                 if v.Character and v.Character:FindFirstChild('HumanoidRootPart') then
                     local gui = v.Character.HumanoidRootPart:FindFirstChild('ItemBillboard')
@@ -1890,7 +1888,7 @@ EspTab:Toggle({
     end
 })
 
--- ตัวแปรควบคุม
+
 _G.InventoryViewerEnabled = true
 _G.ViewerRunning = false
 
