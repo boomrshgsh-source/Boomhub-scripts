@@ -335,9 +335,9 @@ Window:Tag({
 })
 
 Window:Tag({
-    Title = "v0.1.5s",
-    Icon = "github",
-    Color = Color3.fromHex("#FFFFFF"),
+    Title = "https://discord.gg/HS5rbMvRvu",
+    Icon = "link",
+    Color = Color3.fromHex("#000000"),
     Radius = 5,
 })
 
