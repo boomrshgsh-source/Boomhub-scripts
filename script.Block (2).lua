@@ -1449,13 +1449,9 @@ end
 
 
 
-local Character = Player.Character or Player.CharacterAdded:Wait()
-local Humanoid = Character:FindFirstChild("Humanoid")
-
-
-
 local Speedwalk = 31
-local enabledwalkspeed = false 
+local enabledwalkspeed = false
+
 local SprintModule = {
     springing = {
         set = function(value) end
@@ -1465,8 +1461,9 @@ local SprintModule = {
 local function SpeedLoop()
     task.spawn(function()
         while task.wait(0.1) do
+            local Humanoid = Player.Character and Player.Character:FindFirstChild("Humanoid")
             if Humanoid and Humanoid.Parent then
-                if enabledwalkspeed then  -- เช็คว่าเปิดอยู่ไหม
+                if enabledwalkspeed then
                     Net.send("set_springing1", true)
                     SprintModule.springing.set(true)
                     Humanoid:SetAttribute("TargetWalkSpeed", Speedwalk)
@@ -1479,6 +1476,7 @@ local function SpeedLoop()
         end
     end)
 end
+
 SpeedLoop()
 
 
@@ -2178,7 +2176,6 @@ ChaterTab:Toggle({
 
 
 
-
 ChaterTab:Toggle({
     Title = "Speed Boost",
     Value = false,
@@ -2191,6 +2188,7 @@ ChaterTab:Toggle({
         end
     end
 })
+
 
 
 ChaterTab:Toggle({
