@@ -1448,9 +1448,14 @@ end
 
 
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local Player = Players.LocalPlayer
+local Net = require(game.ReplicatedStorage.Modules.Core.Net)
 
 local Speedwalk = 31
-local enabledwalkspeed = false
+local enabledwalkspeed = false  -- เริ่มต้นปิด (ไม่ทำงาน)
 
 local SprintModule = {
     springing = {
@@ -1458,26 +1463,24 @@ local SprintModule = {
     }
 }
 
-local function SpeedLoop()
-    task.spawn(function()
-        while task.wait(0.1) do
-            local Humanoid = Player.Character and Player.Character:FindFirstChild("Humanoid")
-            if Humanoid and Humanoid.Parent then
-                if enabledwalkspeed then
-                    Net.send("set_springing1", true)
-                    SprintModule.springing.set(true)
-                    Humanoid:SetAttribute("TargetWalkSpeed", Speedwalk)
-                    Humanoid.WalkSpeed = Speedwalk
-                else
-                    Humanoid:SetAttribute("TargetWalkSpeed", 8)
-                    Humanoid.WalkSpeed = 8
-                end
+task.spawn(function()
+    while task.wait(0.1) do
+        local Humanoid = Player.Character and Player.Character:FindFirstChild("Humanoid")
+        if Humanoid and Humanoid.Parent then
+            if enabledwalkspeed then 
+                Net.send("set_springing1", true)
+                SprintModule.springing.set(true)
+                Humanoid:SetAttribute("TargetWalkSpeed", Speedwalk)
+                Humanoid.WalkSpeed = Speedwalk
+            else
+                Humanoid:SetAttribute("TargetWalkSpeed", 8)
+                Humanoid.WalkSpeed = 8
             end
         end
-    end)
-end
+    end
+end)
 
-SpeedLoop()
+
 
 
 
@@ -2184,7 +2187,7 @@ ChaterTab:Toggle({
         if Value then
             Speedwalk = 31
         else
-            Speedwalk = 8
+            Speedwalk = 8 
         end
     end
 })
