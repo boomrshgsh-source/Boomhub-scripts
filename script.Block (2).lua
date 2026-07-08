@@ -1438,6 +1438,56 @@ end
 
 
 
+
+
+
+
+
+-- walkspeed
+
+
+
+
+
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Humanoid = Character:FindFirstChild("Humanoid")
+
+
+
+local Speedwalk = 31
+local enabledwalkspeed = false 
+local SprintModule = {
+    springing = {
+        set = function(value) end
+    }
+}
+
+local function SpeedLoop()
+    task.spawn(function()
+        while task.wait(0.1) do
+            if Humanoid and Humanoid.Parent then
+                if enabledwalkspeed then  -- เช็คว่าเปิดอยู่ไหม
+                    Net.send("set_springing1", true)
+                    SprintModule.springing.set(true)
+                    Humanoid:SetAttribute("TargetWalkSpeed", Speedwalk)
+                    Humanoid.WalkSpeed = Speedwalk
+                else
+                    Humanoid:SetAttribute("TargetWalkSpeed", 8)
+                    Humanoid.WalkSpeed = 8
+                end
+            end
+        end
+    end)
+end
+SpeedLoop()
+
+
+
+
+
+
+
+
 local CombatTab = Window:Tab({Title = "COMBAT", Icon = "swords"})
 
 CombatTab:Toggle({
@@ -2125,8 +2175,26 @@ ChaterTab:Toggle({
     end
 })
 
+
+
+
+
 ChaterTab:Toggle({
-    Title = "Jump boots",
+    Title = "Speed Boost",
+    Value = false,
+    Callback = function(Value)
+        enabledwalkspeed = Value
+        if Value then
+            Speedwalk = 31
+        else
+            Speedwalk = 8
+        end
+    end
+})
+
+
+ChaterTab:Toggle({
+    Title = "Jump boost",
     Desc = "โดดสูง",
     Value = false,
     Callback = function(state)
@@ -2163,6 +2231,12 @@ ChaterTab:Toggle({
 			end
     end
 })
+
+
+
+
+
+
 
 
 ChaterTab:Divider()
