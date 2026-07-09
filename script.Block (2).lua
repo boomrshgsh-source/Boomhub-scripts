@@ -20,7 +20,14 @@ local Client = Players.LocalPlayer
 
 
 
-
+if not _G.Bypass then 
+    local func = getupvalue(Net.get, 2)
+    if func then
+        setconstant(func, 3, "KUYIENGOKUYIENGO")
+        setconstant(func, 4, "KUYIENGOKUYIENGO")
+    end
+    _G.Bypass = true 
+end
 
 
 local TweenService = game:GetService("TweenService")
@@ -85,7 +92,7 @@ if canShowUI then
     logo.Position = UDim2.new(1, -15, 0, 15)
     logo.AnchorPoint = Vector2.new(1, 0)
     logo.BackgroundTransparency = 1
-    logo.Image = "rbxassetid://124339558110081"
+    logo.Image = "rbxassetid://76237854750317"
     logo.Parent = mainFrame
 
     local logoCorner = Instance.new("UICorner")
