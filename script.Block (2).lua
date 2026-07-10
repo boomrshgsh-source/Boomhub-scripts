@@ -806,8 +806,7 @@ end)
 
 -- Esp
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -1870,7 +1869,7 @@ WeaponTab:Toggle({
 local EspTab = Window:Tab({Title = "ESP", Icon = "eye"})
 EspTab:Toggle({
     Title = "Name ESP",
-    Value = true,
+    Value = false,
     Callback = function(state)
         NameESP = state
     end
@@ -1878,7 +1877,7 @@ EspTab:Toggle({
 
 EspTab:Toggle({
     Title = "Distance ESP",
-    Value = true,
+    Value = false,
     Callback = function(state)
         DistanceESP = state
     end
