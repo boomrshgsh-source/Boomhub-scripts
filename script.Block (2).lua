@@ -808,12 +808,13 @@ end)
 
 
 
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local NameESP = false 
 local DistanceESP = false
-
-
+local HealthESP = false
 
 local function CreateESP(player)
     if player == LocalPlayer then return end
@@ -821,32 +822,64 @@ local function CreateESP(player)
     local function Setup(character)
         local head = character:WaitForChild("Head", 5)
         local hrp = character:WaitForChild("HumanoidRootPart", 5)
-        if not head or not hrp then return end
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        if not head or not hrp or not humanoid then return end
 
         local old = head:FindFirstChild("ESP")
         if old then
             old:Destroy()
         end
+        
+        local oldHealth = head:FindFirstChild("ESPHealth")
+        if oldHealth then
+            oldHealth:Destroy()
+        end
 
+        -- NAME + DISTANCE ESP
         local gui = Instance.new("BillboardGui")
         gui.Name = "ESP"
         gui.Adornee = head
         gui.Size = UDim2.new(0, 120, 0, 16)
-        gui.StudsOffset = Vector3.new(0, 2, 0)
+        gui.StudsOffset = Vector3.new(0, 2.5, 0)
         gui.AlwaysOnTop = true
+        gui.MaxDistance = 500
         gui.Parent = head
 
         local label = Instance.new("TextLabel")
         label.Size = UDim2.fromScale(1, 1)
         label.BackgroundTransparency = 1
         label.Font = Enum.Font.GothamBold
-        label.TextSize = 11
+        label.TextSize = 12
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
         label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        label.TextStrokeTransparency = 0
+        label.TextStrokeTransparency = 0.3
         label.TextXAlignment = Enum.TextXAlignment.Center
         label.TextYAlignment = Enum.TextYAlignment.Center
         label.Parent = gui
+
+        -- HEALTH BAR
+        local healthGui = Instance.new("BillboardGui")
+        healthGui.Name = "ESPHealth"
+        healthGui.Adornee = head
+        healthGui.Size = UDim2.new(0, 60, 0, 5)
+        healthGui.StudsOffset = Vector3.new(0, 1.2, 0)
+        healthGui.AlwaysOnTop = true
+        healthGui.MaxDistance = 500
+        healthGui.Enabled = false
+        healthGui.Parent = head
+
+        local healthBg = Instance.new("Frame")
+        healthBg.Size = UDim2.fromScale(1, 1)
+        healthBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        healthBg.BorderSizePixel = 1
+        healthBg.BorderColor3 = Color3.fromRGB(0, 0, 0)
+        healthBg.Parent = healthGui
+
+        local healthBar = Instance.new("Frame")
+        healthBar.Size = UDim2.fromScale(1, 1)
+        healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        healthBar.BorderSizePixel = 0
+        healthBar.Parent = healthBg
 
         local connection
         connection = RunService.RenderStepped:Connect(function()
@@ -861,27 +894,40 @@ local function CreateESP(player)
 
             local distance = math.floor((myHRP.Position - hrp.Position).Magnitude)
 
+            -- NAME + DISTANCE
             if NameESP and DistanceESP then
                 label.Text = player.Name .. " | [" .. distance .. "]"
-                gui.Size = UDim2.new(0, 120, 0, 16)
+                gui.Size = UDim2.new(0, 140, 0, 16)
+                label.Visible = true
             elseif NameESP then
                 label.Text = player.Name
-                gui.Size = UDim2.new(0, 70, 0, 16)
+                gui.Size = UDim2.new(0, 100, 0, 16)
+                label.Visible = true
             elseif DistanceESP then
                 label.Text = "[" .. distance .. "]"
-                gui.Size = UDim2.new(0, 50, 0, 16)
+                gui.Size = UDim2.new(0, 60, 0, 16)
+                label.Visible = true
             else
-                label.Text = ""
+                label.Visible = false
             end
-            if SilentAim then  
-                local target = GetClosestTarget()
-                if target == character then
-                    label.TextColor3 = Color3.fromRGB(255, 0, 0)  -- สีแดง
+
+            -- HEALTH BAR
+            if HealthESP then
+                healthGui.Enabled = true
+                local health = humanoid.Health
+                local maxHealth = humanoid.MaxHealth
+                local healthPercent = math.clamp(health / maxHealth, 0, 1)
+                healthBar.Size = UDim2.fromScale(healthPercent, 1)
+                
+                if healthPercent > 0.5 then
+                    healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                elseif healthPercent > 0.25 then
+                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
                 else
-                    label.TextColor3 = Color3.fromRGB(255, 255, 255)  -- สีขาว
+                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
                 end
             else
-                label.TextColor3 = Color3.fromRGB(255, 255, 255)  -- สีขาว (ไม่เปลี่ยนสี)
+                healthGui.Enabled = false
             end
         end)
     end
@@ -894,10 +940,13 @@ local function CreateESP(player)
 end
 
 for _, player in ipairs(Players:GetPlayers()) do
-    CreateESP(player)
+    task.spawn(function()
+        CreateESP(player)
+    end)
 end
 
 Players.PlayerAdded:Connect(CreateESP)
+
 
 
 
@@ -1882,6 +1931,15 @@ EspTab:Toggle({
         DistanceESP = state
     end
 })
+
+EspTab:Toggle({
+    Title = "Health ESP",
+    Value = false,
+    Callback = function(state)
+        HealthESP = state
+    end
+})
+
 
 
 EspTab:Colorpicker({
